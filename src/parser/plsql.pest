@@ -1,0 +1,126 @@
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+ident = @{ !("BEGIN" | "END" | "DECLARE" | "TRUE" | "FALSE" | "OR" | "AND" | "NOT" | "IF" | "THEN" | "ELSIF" | "ELSE" | "WHILE" | "LOOP" | "FOR" | "IN" | "EXIT" | "WHEN" | "EXCEPTION" | "RAISE" | "OTHERS" | "SELECT" | "INTO" | "FROM" | "INSERT" | "VALUES" | "UPDATE" | "SET" | "DELETE" | "WHERE" | "COMMIT" | "ROLLBACK" | "CURSOR" | "IS" | "OPEN" | "FETCH" | "CLOSE" | "BEFORE" | "AFTER" | "TRIGGER" | "ON" | "OLD" | "NEW") ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+number = @{ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
+string = @{ "'" ~ (("''" | (!"'" ~ ANY))*) ~ "'" }
+
+boolean = { "TRUE" | "FALSE" }
+
+// Block structure: optional DECLARE, required BEGIN...END
+block = { declare_section? ~ begin_section ~ exception_section? ~ END ~ SEMICOLON? }
+declare_section = { DECLARE ~ declaration ~ (declaration)* }
+declaration = { variable_declaration | exception_declaration | cursor_declaration | trigger_declaration }
+variable_declaration = { !(BEGIN) ~ ident ~ ident ~ (ASSIGN ~ expression)? ~ SEMICOLON }
+exception_declaration = { ident ~ EXCEPTION ~ SEMICOLON }
+cursor_declaration = { CURSOR ~ ident ~ IS ~ cursor_query ~ SEMICOLON }
+trigger_declaration = { TRIGGER ~ ident ~ trigger_timing ~ trigger_event ~ ON ~ ident ~ block }
+begin_section = { BEGIN ~ statement* }
+exception_section = { EXCEPTION ~ exception_handler+ }
+exception_handler = { WHEN ~ exception_selector ~ THEN ~ statement* }
+exception_selector = { OTHERS | ident }
+statement = _{ if_statement | while_statement | loop_statement | range_for_statement | cursor_for_statement | exit_statement | raise_statement | commit_statement | rollback_statement | open_statement | fetch_statement | close_statement | select_into_statement | insert_statement | update_statement | delete_statement | block | assignment | expression_stmt }
+if_statement = { IF ~ expression ~ THEN ~ statement* ~ elsif_branch* ~ else_branch? ~ END ~ IF ~ SEMICOLON }
+elsif_branch = { ELSIF ~ expression ~ THEN ~ statement* }
+else_branch = { ELSE ~ statement* }
+while_statement = { WHILE ~ expression ~ LOOP ~ statement* ~ END ~ LOOP ~ SEMICOLON }
+loop_statement = { LOOP ~ statement* ~ END ~ LOOP ~ SEMICOLON }
+range_for_statement = { FOR ~ ident ~ IN ~ expression ~ DOTDOT ~ expression ~ LOOP ~ statement* ~ END ~ LOOP ~ SEMICOLON }
+cursor_for_statement = { FOR ~ target_list ~ IN ~ ident ~ LOOP ~ statement* ~ END ~ LOOP ~ SEMICOLON }
+exit_statement = { EXIT ~ (WHEN ~ expression)? ~ SEMICOLON }
+raise_statement = { RAISE ~ ident ~ SEMICOLON }
+commit_statement = { COMMIT ~ SEMICOLON }
+rollback_statement = { ROLLBACK ~ SEMICOLON }
+open_statement = { OPEN ~ ident ~ SEMICOLON }
+fetch_statement = { FETCH ~ ident ~ INTO ~ target_list ~ SEMICOLON }
+close_statement = { CLOSE ~ ident ~ SEMICOLON }
+select_into_statement = { SELECT ~ select_list ~ INTO ~ target_list ~ FROM ~ ident ~ where_clause? ~ SEMICOLON }
+insert_statement = { INSERT ~ INTO ~ ident ~ column_list? ~ VALUES ~ "(" ~ expression_list ~ ")" ~ SEMICOLON }
+update_statement = { UPDATE ~ ident ~ SET ~ update_assignment_list ~ where_clause? ~ SEMICOLON }
+delete_statement = { DELETE ~ FROM ~ ident ~ where_clause? ~ SEMICOLON }
+assignment = { path_ident ~ ASSIGN ~ expression ~ SEMICOLON }
+expression_stmt = { !(BEGIN | END | DECLARE) ~ expression ~ SEMICOLON }
+path_ident = @{ (OLD | NEW | ident) ~ ("." ~ ident)* }
+select_list = { expression ~ (COMMA ~ expression)* }
+target_list = { ident ~ (COMMA ~ ident)* }
+column_list = { "(" ~ ident_list ~ ")" }
+ident_list = { ident ~ (COMMA ~ ident)* }
+expression_list = { expression ~ (COMMA ~ expression)* }
+update_assignment_list = { update_assignment ~ (COMMA ~ update_assignment)* }
+update_assignment = { ident ~ EQ ~ expression }
+cursor_query = { SELECT ~ select_list ~ INTO ~ ident ~ FROM ~ ident ~ where_clause? }
+where_clause = { WHERE ~ expression }
+
+// Expression parsing
+expression = { logical_or }
+
+logical_or = { logical_and ~ (OR ~ logical_and)* }
+logical_and = { equality ~ (AND ~ equality)* }
+equality = { comparison ~ ((EQ | NEQ) ~ comparison)* }
+comparison = { addition ~ ((LT | LTE | GT | GTE) ~ addition)* }
+addition = { multiplication ~ ((PLUS | MINUS) ~ multiplication)* }
+multiplication = { unary ~ ((STAR | SLASH) ~ unary)* }
+unary = { (MINUS | NOT)* ~ primary }
+primary = { number | string | boolean | path_ident | "(" ~ expression ~ ")" }
+
+// Keywords
+DECLARE = _{ "DECLARE" }
+BEGIN = _{ "BEGIN" }
+END = _{ "END" }
+IF = _{ "IF" }
+THEN = _{ "THEN" }
+ELSIF = _{ "ELSIF" }
+ELSE = _{ "ELSE" }
+WHILE = _{ "WHILE" }
+LOOP = _{ "LOOP" }
+FOR = _{ "FOR" }
+IN = _{ "IN" }
+EXIT = _{ "EXIT" }
+WHEN = _{ "WHEN" }
+RAISE = _{ "RAISE" }
+EXCEPTION = _{ "EXCEPTION" }
+OTHERS = { "OTHERS" }
+COMMIT = _{ "COMMIT" }
+ROLLBACK = _{ "ROLLBACK" }
+CURSOR = _{ "CURSOR" }
+IS = _{ "IS" }
+OPEN = _{ "OPEN" }
+FETCH = _{ "FETCH" }
+CLOSE = _{ "CLOSE" }
+BEFORE = _{ "BEFORE" }
+AFTER = _{ "AFTER" }
+TRIGGER = _{ "TRIGGER" }
+ON = _{ "ON" }
+OLD = _{ "OLD" }
+NEW = _{ "NEW" }
+SELECT = _{ "SELECT" }
+INTO = _{ "INTO" }
+FROM = _{ "FROM" }
+INSERT = _{ "INSERT" }
+VALUES = _{ "VALUES" }
+UPDATE = _{ "UPDATE" }
+SET = _{ "SET" }
+DELETE = _{ "DELETE" }
+WHERE = _{ "WHERE" }
+COMMA = _{ "," }
+
+trigger_timing = { BEFORE | AFTER }
+trigger_event = { INSERT | UPDATE | DELETE }
+
+// Operators and delimiters
+OR = { "OR" }
+AND = { "AND" }
+NOT = { "NOT" }
+
+EQ = { "=" }
+NEQ = { "<>" }
+LT = { "<" }
+LTE = { "<=" }
+GT = { ">" }
+GTE = { ">=" }
+PLUS = { "+" }
+MINUS = { "-" }
+STAR = { "*" }
+SLASH = { "/" }
+DOTDOT = _{ ".." }
+ASSIGN = _{ ":=" }
+SEMICOLON = _{ ";" }
