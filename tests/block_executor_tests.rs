@@ -373,6 +373,84 @@ fn test_delete_removes_matching_rows() {
 }
 
 #[test]
+fn test_create_table_statement_creates_in_memory_table() {
+    let block = parse_block(
+        r#"BEGIN
+    CREATE TABLE employees (id, name, salary);
+    INSERT INTO employees (id, name, salary) VALUES (3, 'Carol', 300);
+    END;"#,
+    )
+    .expect("Failed to parse block");
+
+    let env = Environment::default();
+
+    let result = execute_block(&block, &env).expect("Failed to execute block");
+
+    assert_eq!(result, Value::Number(1.0));
+
+    let table = env
+        .database()
+        .table("employees")
+        .expect("missing employees table");
+    assert_eq!(table.rows().len(), 1);
+
+    let inserted = table
+        .rows()
+        .iter()
+        .find(|row| row.get("id") == Some(&Value::Number(3.0)))
+        .expect("missing inserted row");
+
+    assert_eq!(
+        inserted.get("name"),
+        Some(&Value::Text("Carol".to_string()))
+    );
+    assert_eq!(inserted.get("salary"), Some(&Value::Number(300.0)));
+}
+
+#[test]
+fn test_alter_table_add_constraint_tracks_schema_metadata() {
+    let block = parse_block(
+        r#"BEGIN
+    ALTER TABLE employees ADD CONSTRAINT salary_positive (salary);
+    END;"#,
+    )
+    .expect("Failed to parse block");
+
+    let env = Environment::default();
+    seed_employees_table(&env);
+
+    let result = execute_block(&block, &env).expect("Failed to execute block");
+
+    assert_eq!(result, Value::Number(1.0));
+
+    let table = env
+        .database()
+        .table("employees")
+        .expect("missing employees table");
+    assert_eq!(table.constraints().len(), 1);
+    assert_eq!(table.constraints()[0].name, "salary_positive");
+    assert_eq!(table.constraints()[0].columns, vec!["salary".to_string()]);
+}
+
+#[test]
+fn test_drop_table_statement_removes_table_from_memory() {
+    let block = parse_block(
+        r#"BEGIN
+    DROP TABLE employees;
+    END;"#,
+    )
+    .expect("Failed to parse block");
+
+    let env = Environment::default();
+    seed_employees_table(&env);
+
+    let result = execute_block(&block, &env).expect("Failed to execute block");
+
+    assert_eq!(result, Value::Number(1.0));
+    assert!(env.database().table("employees").is_none());
+}
+
+#[test]
 fn test_before_insert_trigger_can_mutate_new_row() {
     let block = parse_block(
         r#"DECLARE

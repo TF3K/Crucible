@@ -16,9 +16,35 @@ impl Database {
         name: impl Into<String>,
         columns: impl IntoIterator<Item = impl Into<String>>,
     ) {
-        self.tables
-            .borrow_mut()
-            .insert(name.into(), Table::new(columns));
+        let name = name.into();
+        let table = Table::new(columns);
+
+        self.with_visible_tables_mut(|tables| {
+            let _ = tables.insert(name, table);
+        });
+    }
+
+    pub fn drop_table(&self, name: &str) -> Result<(), DbError> {
+        self.with_visible_tables_mut(|tables| {
+            tables
+                .remove(name)
+                .ok_or_else(|| DbError::TableNotFound(name.to_string()))
+                .map(|_| ())
+        })
+    }
+
+    pub fn alter_table_add_constraint(
+        &self,
+        table_name: &str,
+        constraint_name: String,
+        columns: Vec<String>,
+    ) -> Result<(), DbError> {
+        self.with_visible_tables_mut(|tables| {
+            let table = tables
+                .get_mut(table_name)
+                .ok_or_else(|| DbError::TableNotFound(table_name.to_string()))?;
+            table.add_constraint(table_name, constraint_name, columns)
+        })
     }
 
     pub fn table(&self, name: &str) -> Option<Table> {
@@ -100,6 +126,19 @@ impl Database {
             .ok_or_else(|| DbError::TableNotFound(name.to_string()))?;
         *existing = table;
         Ok(())
+    }
+
+    fn with_visible_tables_mut<R>(&self, f: impl FnOnce(&mut HashMap<String, Table>) -> R) -> R {
+        if self.is_in_transaction() {
+            let mut transaction = self.transaction.borrow_mut();
+            let tables = transaction
+                .working_tables_mut()
+                .expect("transaction must be active after check");
+            f(tables)
+        } else {
+            let mut tables = self.tables.borrow_mut();
+            f(&mut tables)
+        }
     }
 
     fn ensure_transaction(&self) {

@@ -1,4 +1,4 @@
-use super::{ParseError, Rule, block::build_block, dml, expr::build_expr, tx};
+use super::{ParseError, Rule, block::build_block, ddl, dml, expr::build_expr, tx};
 use crate::ast::{ExceptionCondition, ExceptionHandler, IfBranch, Statement};
 
 pub(super) fn build_statement(pair: pest::iterators::Pair<Rule>) -> Result<Statement, ParseError> {
@@ -34,6 +34,12 @@ pub(super) fn build_statement(pair: pest::iterators::Pair<Rule>) -> Result<State
         Rule::update_statement => dml::build_update_statement(pair),
 
         Rule::delete_statement => dml::build_delete_statement(pair),
+
+        Rule::create_table_statement => ddl::build_create_table_statement(pair),
+
+        Rule::alter_table_statement => ddl::build_alter_table_statement(pair),
+
+        Rule::drop_table_statement => ddl::build_drop_table_statement(pair),
 
         Rule::block => Ok(Statement::Block(Box::new(build_block(pair)?))),
 
@@ -87,6 +93,9 @@ fn build_if_statement(pair: pest::iterators::Pair<Rule>) -> Result<Statement, Pa
             | Rule::insert_statement
             | Rule::update_statement
             | Rule::delete_statement
+            | Rule::create_table_statement
+            | Rule::alter_table_statement
+            | Rule::drop_table_statement
             | Rule::block
             | Rule::assignment
             | Rule::expression_stmt => {

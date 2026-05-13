@@ -12,6 +12,8 @@ Crucible is a Rust interpreter for a PL/SQL-like block language. The goal is to 
 - [x] Control flow with `IF` / `ELSIF` / `ELSE`, `WHILE`, `LOOP`, numeric `FOR`, cursor `FOR`, and `EXIT WHEN`.
 - [x] Exception handling with named handlers and `RAISE`.
 - [x] In-memory DML simulation for `SELECT INTO`, `INSERT`, `UPDATE`, and `DELETE`.
+- [x] In-memory table creation with `CREATE TABLE`, stored in the current database snapshot.
+- [x] In-memory schema changes with `ALTER TABLE ... ADD CONSTRAINT` and `DROP TABLE`.
 - [x] Transaction support with `COMMIT` and `ROLLBACK`.
 - [x] Cursor support with `CURSOR`, `OPEN`, `FETCH INTO`, `CLOSE`, and cursor loops.
 - [x] Row triggers with `BEFORE` and `AFTER` timing for `INSERT`, `UPDATE`, and `DELETE`.
@@ -25,6 +27,8 @@ Crucible is a Rust interpreter for a PL/SQL-like block language. The goal is to 
 - [ ] Savepoints and more complete transactional control.
 - [ ] Statement-level triggers and richer trigger conditions.
 - [ ] Broader SQL support, including more query forms and joins.
+- [ ] Reading, parsing, and validating SQL files in later versions.
+- [ ] File-backed schema and table persistence.
 - [ ] Stronger type checking and explicit conversions closer to PL/SQL semantics.
 
 ## Example

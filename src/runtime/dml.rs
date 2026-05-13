@@ -339,9 +339,12 @@ fn row_matches_where(
     }
 }
 
-fn map_db_error(err: DbError) -> EvalError {
+pub(super) fn map_db_error(err: DbError) -> EvalError {
     match err {
         DbError::TableNotFound(table) => EvalError::TableNotFound(table),
+        DbError::ConstraintAlreadyExists { table, constraint } => {
+            EvalError::ConstraintAlreadyExists { table, constraint }
+        }
         DbError::ColumnNotFound { table, column } => EvalError::ColumnNotFound { table, column },
         DbError::ColumnCountMismatch { expected, found } => {
             EvalError::ColumnCountMismatch { expected, found }

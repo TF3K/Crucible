@@ -1,6 +1,7 @@
 pub mod block;
 pub mod branch;
 pub mod cursor;
+pub mod ddl;
 pub mod declaration;
 pub mod dml;
 pub mod exceptions;
@@ -12,6 +13,7 @@ pub mod trigger;
 pub use block::Block;
 pub use branch::IfBranch;
 pub use cursor::CursorQuery;
+pub use ddl::{AlterTableAction, AlterTableStatement, CreateTableStatement, DropTableStatement};
 pub use declaration::Declaration;
 pub use dml::{
     DeleteStatement, InsertStatement, SelectIntoTarget, UpdateAssignment, UpdateStatement,

@@ -1,5 +1,6 @@
 use super::{
-    Block, DeleteStatement, Expr, IfBranch, InsertStatement, SelectIntoTarget, UpdateStatement,
+    AlterTableStatement, Block, CreateTableStatement, DeleteStatement, DropTableStatement, Expr,
+    IfBranch, InsertStatement, SelectIntoTarget, UpdateStatement,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -51,6 +52,9 @@ pub enum Statement {
     Insert(InsertStatement),
     Update(UpdateStatement),
     Delete(DeleteStatement),
+    CreateTable(CreateTableStatement),
+    AlterTable(AlterTableStatement),
+    DropTable(DropTableStatement),
     Expression(Expr),
     Assignment {
         name: String,

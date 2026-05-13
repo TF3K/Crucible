@@ -1,7 +1,7 @@
 use crate::ast::{Block, ExceptionCondition, ExceptionHandler, Expr, IfBranch, Statement};
 use crate::expr::{EvalError, Value, eval};
 
-use super::{Environment, cursor, dml};
+use super::{Environment, cursor, ddl, dml};
 
 pub fn execute_block(block: &Block, env: &Environment) -> Result<Value, EvalError> {
     let local_env = env.child();
@@ -99,6 +99,12 @@ fn execute_statement(statement: &Statement, env: &Environment) -> Result<ExecFlo
         Statement::Update(stmt) => Ok(ExecFlow::Value(dml::execute_update(stmt, env)?)),
 
         Statement::Delete(stmt) => Ok(ExecFlow::Value(dml::execute_delete(stmt, env)?)),
+
+        Statement::CreateTable(stmt) => Ok(ExecFlow::Value(ddl::execute_create_table(stmt, env)?)),
+
+        Statement::AlterTable(stmt) => Ok(ExecFlow::Value(ddl::execute_alter_table(stmt, env)?)),
+
+        Statement::DropTable(stmt) => Ok(ExecFlow::Value(ddl::execute_drop_table(stmt, env)?)),
 
         Statement::Expression(expr) => Ok(ExecFlow::Value(eval(expr, env)?)),
         Statement::Assignment { name, value } => {

@@ -3,6 +3,7 @@ use pest_derive::Parser;
 
 mod block;
 mod cursor;
+mod ddl;
 mod dml;
 mod expr;
 mod statement;

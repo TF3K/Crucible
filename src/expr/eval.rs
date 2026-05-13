@@ -40,6 +40,9 @@ pub enum EvalError {
     #[error("trigger `{0}` is already declared")]
     TriggerAlreadyDeclared(String),
 
+    #[error("constraint `{constraint}` already exists on table `{table}`")]
+    ConstraintAlreadyExists { table: String, constraint: String },
+
     #[error("exit used outside of a loop")]
     ExitOutsideLoop,
 
