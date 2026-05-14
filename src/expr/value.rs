@@ -82,8 +82,8 @@ impl fmt::Display for Value {
             Value::Text(s) => write!(f, "'{}'", s.replace('\'', "''")),
             Value::Bool(b) => write!(f, "{}", b),
             Value::Date(d) => write!(f, "{}", d),
-            Value::Timestamp(dt) => write!(f, "{}", dt),
-            Value::DateTime(dt) => write!(f, "{}", dt),
+            Value::Timestamp(dt) => write!(f, "{}", dt.format("%H:%M:%S")),
+            Value::DateTime(dt) => write!(f, "{}", dt.format("%Y-%m-%d %H:%M:%S")),
             Value::Record(fields) => {
                 let mut entries = fields.iter().collect::<Vec<_>>();
                 entries.sort_by(|(left_key, _), (right_key, _)| left_key.cmp(right_key));

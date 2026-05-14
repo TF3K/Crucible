@@ -1,6 +1,7 @@
 use crate::ast::{BinaryOp, Expr, UnaryOp};
 use crate::expr::value::Value;
 use crate::runtime::env::Environment;
+use chrono::Local;
 
 #[derive(Debug, thiserror::Error, PartialEq)]
 pub enum EvalError {
@@ -70,6 +71,11 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             let lhs = eval(left, env)?;
             let rhs = eval(right, env)?;
             eval_binary(op, lhs, rhs)
+        }
+
+        Expr::Sysdate => {
+            // Default to DATE when used outside of declaration context
+            Ok(Value::Date(Local::now().naive_local().date()))
         }
     }
 }

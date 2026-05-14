@@ -1,3 +1,4 @@
+use chrono::NaiveDate;
 use crucible::ast::{BinaryOp, Expr, Statement, UnaryOp};
 use crucible::expr::{Value, eval};
 use crucible::parser::{parse_block, parse_expression};
@@ -88,6 +89,26 @@ fn test_parse_double_quoted_string_literal() {
         expr,
         Expr::Literal(Value::Text("Hello, World!".to_string()))
     );
+}
+
+#[test]
+fn test_parse_date_literal() {
+    let expr = parse_expression(r#"DATE "2026-05-14""#).expect("Failed to parse");
+
+    assert_eq!(
+        expr,
+        Expr::Literal(Value::Date(
+            NaiveDate::from_ymd_opt(2026, 5, 14).expect("invalid date")
+        ))
+    );
+}
+
+#[test]
+fn test_parse_sysdate_literal() {
+    let expr = parse_expression("SYSDATE").expect("Failed to parse");
+
+    // SYSDATE should parse as Expr::Sysdate
+    assert_eq!(expr, Expr::Sysdate);
 }
 
 #[test]
@@ -239,6 +260,50 @@ END;"#,
             );
         }
         _ => panic!("Expected assignment statement"),
+    }
+}
+
+#[test]
+fn test_parse_block_with_date_literal_initializer() {
+    let block = parse_block(
+        r#"DECLARE
+  x DATE := DATE "2026-05-14";
+BEGIN
+  x;
+END;"#,
+    )
+    .expect("Failed to parse block");
+
+    assert_eq!(block.declarations.len(), 1);
+    assert_eq!(block.declarations[0].name, "x");
+    assert_eq!(block.declarations[0].type_name, "DATE");
+    assert_eq!(
+        block.declarations[0].init_value,
+        Some(Expr::Literal(Value::Date(
+            NaiveDate::from_ymd_opt(2026, 5, 14).expect("invalid date")
+        )))
+    );
+}
+
+#[test]
+fn test_parse_block_with_sysdate_initializer() {
+    let block = parse_block(
+        r#"DECLARE
+  x DATE := SYSDATE;
+BEGIN
+  x;
+END;"#,
+    )
+    .expect("Failed to parse block");
+
+    assert_eq!(block.declarations.len(), 1);
+    assert_eq!(block.declarations[0].name, "x");
+    assert_eq!(block.declarations[0].type_name, "DATE");
+
+    // Verify the init_value is Expr::Sysdate
+    match &block.declarations[0].init_value {
+        Some(Expr::Sysdate) => (),
+        _ => panic!("Expected SYSDATE initializer to be Expr::Sysdate"),
     }
 }
 

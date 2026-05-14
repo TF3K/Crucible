@@ -65,7 +65,9 @@ comparison = { addition ~ ((LT | LTE | GT | GTE) ~ addition)* }
 addition = { multiplication ~ ((PLUS | MINUS) ~ multiplication)* }
 multiplication = { unary ~ ((STAR | SLASH) ~ unary)* }
 unary = { (MINUS | NOT)* ~ primary }
-primary = { number | string | boolean | path_ident | "(" ~ expression ~ ")" }
+primary = { number | string | date_literal | sysdate | boolean | path_ident | "(" ~ expression ~ ")" }
+date_literal = { "DATE" ~ string }
+sysdate = { SYSDATE }
 
 // Keywords
 DECLARE = _{ "DECLARE" }
@@ -113,6 +115,7 @@ SET = _{ "SET" }
 DELETE = _{ "DELETE" }
 WHERE = _{ "WHERE" }
 COMMA = _{ "," }
+SYSDATE = _{ "SYSDATE" }
 
 trigger_timing = { BEFORE | AFTER }
 trigger_event = { INSERT | UPDATE | DELETE }

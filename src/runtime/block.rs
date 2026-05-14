@@ -1,5 +1,6 @@
 use crate::ast::{Block, ExceptionCondition, ExceptionHandler, Expr, IfBranch, Statement};
 use crate::expr::{EvalError, Value, eval};
+use chrono::Local;
 
 use super::{Environment, cursor, ddl, dml};
 
@@ -12,6 +13,45 @@ pub fn execute_block(block: &Block, env: &Environment) -> Result<Value, EvalErro
         ExecFlow::ExitLoop(_) => Err(EvalError::ExitOutsideLoop),
         ExecFlow::Raise(name) => Err(EvalError::UnhandledException(name)),
     }
+}
+
+/// Execute a block and collect the evaluated value for each top-level statement in the
+/// block's `BEGIN` section. Declarations are executed first (same as `execute_block`).
+/// Returns a vector with one entry per statement: `Value::Null` for statements that
+/// produce no value, or the produced `Value`.
+pub fn execute_block_collect_values(
+    block: &Block,
+    env: &Environment,
+) -> Result<Vec<Value>, EvalError> {
+    let local_env = env.child();
+
+    // Execute declarations first (same behavior as execute_block)
+    if let Err(err) = execute_declarations(block, &local_env) {
+        if let Some(handler) =
+            find_exception_handler(&block.exception_handlers, &ExceptionSignal::Runtime)
+        {
+            // If a handler exists, execute its statements and continue
+            execute_statements(&handler.statements, &local_env)?;
+        } else {
+            return Err(err);
+        }
+    }
+
+    let mut results: Vec<Value> = Vec::new();
+
+    for statement in &block.statements {
+        match execute_statement(statement, &local_env)? {
+            ExecFlow::Value(value) => results.push(value),
+            ExecFlow::NoValue => results.push(Value::Null),
+            ExecFlow::Raise(name) => return Err(EvalError::UnhandledException(name)),
+            ExecFlow::ExitLoop(opt) => {
+                results.push(opt.unwrap_or(Value::Null));
+                return Ok(results);
+            }
+        }
+    }
+
+    Ok(results)
 }
 
 pub(super) fn execute_block_in_scope(
@@ -308,7 +348,23 @@ fn execute_declarations(block: &Block, env: &Environment) -> Result<(), EvalErro
         }
 
         let value = match &declaration.init_value {
-            Some(expr) => eval(expr, env)?,
+            Some(expr) => {
+                // Handle SYSDATE specially based on the declared type
+                match expr {
+                    Expr::Sysdate => {
+                        let now_local = Local::now();
+                        match declaration.type_name.to_uppercase().as_str() {
+                            "DATE" => Value::Date(now_local.naive_local().date()),
+                            "TIMESTAMP" => Value::Timestamp(now_local.naive_local()),
+                            "DATETIME" => Value::DateTime(
+                                now_local.with_timezone(&chrono::FixedOffset::east_opt(0).unwrap()),
+                            ),
+                            _ => eval(expr, env)?,
+                        }
+                    }
+                    _ => eval(expr, env)?,
+                }
+            }
             None => Value::Null,
         };
         env.declare(

@@ -1,6 +1,6 @@
 use cliclack::input;
 use crucible::parser::parse_block;
-use crucible::runtime::{Environment, execute_block};
+use crucible::runtime::{Environment, execute_block_collect_values};
 use std::io::{self, Write};
 
 fn clear_screen() {
@@ -49,8 +49,12 @@ fn main() {
             }
         };
 
-        match execute_block(&block, &env) {
-            Ok(value) => println!("{}", value),
+        match execute_block_collect_values(&block, &env) {
+            Ok(values) => {
+                for v in values {
+                    println!("{}", v);
+                }
+            }
             Err(err) => eprintln!("Execution error: {}", err),
         }
     }

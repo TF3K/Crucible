@@ -1,6 +1,7 @@
 use super::{ParseError, Rule};
 use crate::ast::{BinaryOp, Expr, UnaryOp};
 use crate::expr::Value;
+use chrono::NaiveDate;
 
 pub(super) fn build_expr(pair: pest::iterators::Pair<Rule>) -> Result<Expr, ParseError> {
     match pair.as_rule() {
@@ -40,6 +41,19 @@ pub(super) fn build_expr(pair: pest::iterators::Pair<Rule>) -> Result<Expr, Pars
         Rule::string => Ok(Expr::Literal(Value::Text(parse_string_literal(
             pair.as_str(),
         )))),
+
+        Rule::date_literal => {
+            let string_pair = pair
+                .into_inner()
+                .next()
+                .ok_or(ParseError::UnexpectedStructure)?;
+            let date_text = parse_string_literal(string_pair.as_str());
+            let date = NaiveDate::parse_from_str(&date_text, "%Y-%m-%d")
+                .map_err(|_| ParseError::UnexpectedStructure)?;
+            Ok(Expr::Literal(Value::Date(date)))
+        }
+
+        Rule::sysdate => Ok(Expr::Sysdate),
 
         Rule::boolean => {
             let b = match pair.as_str().to_uppercase().as_str() {

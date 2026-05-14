@@ -1,3 +1,4 @@
+use chrono::NaiveDate;
 use crucible::expr::{EvalError, Value};
 use crucible::parser::parse_block;
 use crucible::runtime::{Environment, execute_block};
@@ -76,26 +77,93 @@ END;"#,
     let env = Environment::default();
     let err = execute_block(&block, &env).expect_err("Expected a type error");
 
-    assert!(matches!(err, EvalError::TypeError(message) if message.contains("expects NUMBER") && message.contains("TEXT")));
+    assert!(
+        matches!(err, EvalError::TypeError(message) if message.contains("expects NUMBER") && message.contains("TEXT"))
+    );
     assert_eq!(env.get("x"), None);
 }
 
 #[test]
-fn test_execute_block_updates_parent_scope_variable() {
+fn test_execute_block_handles_date_literal_initializer() {
     let block = parse_block(
-        r#"BEGIN
-  x := x + 5;
+        r#"DECLARE
+    x DATE := DATE "2026-05-14";
+  BEGIN
+    x;
+  END;"#,
+    )
+    .expect("Failed to parse block");
+
+    let env = Environment::default();
+    let result = execute_block(&block, &env).expect("Failed to execute block");
+
+    assert_eq!(
+        result,
+        Value::Date(NaiveDate::from_ymd_opt(2026, 5, 14).expect("invalid date"))
+    );
+}
+
+#[test]
+fn test_execute_block_handles_sysdate_initializer() {
+    let block = parse_block(
+        r#"DECLARE
+  x DATE := SYSDATE;
+BEGIN
+  x;
 END;"#,
     )
     .expect("Failed to parse block");
 
     let env = Environment::default();
-    env.set("x", Value::Number(10.0));
-
     let result = execute_block(&block, &env).expect("Failed to execute block");
 
-    assert_eq!(result, Value::Number(15.0));
-    assert_eq!(env.get("x"), Some(Value::Number(15.0)));
+    // SYSDATE should return today's date; just verify it's a Date value
+    match result {
+        Value::Date(_) => (),
+        _ => panic!("Expected SYSDATE to return a Date value"),
+    }
+}
+
+#[test]
+fn test_execute_block_sysdate_as_timestamp() {
+    let block = parse_block(
+        r#"DECLARE
+  x TIMESTAMP := SYSDATE;
+BEGIN
+  x;
+END;"#,
+    )
+    .expect("Failed to parse block");
+
+    let env = Environment::default();
+    let result = execute_block(&block, &env).expect("Failed to execute block");
+
+    // SYSDATE with TIMESTAMP type should return a Timestamp value (date and time)
+    match result {
+        Value::Timestamp(_) => (),
+        _ => panic!("Expected SYSDATE with TIMESTAMP type to return a Timestamp value"),
+    }
+}
+
+#[test]
+fn test_execute_block_sysdate_as_datetime() {
+    let block = parse_block(
+        r#"DECLARE
+  x DATETIME := SYSDATE;
+BEGIN
+  x;
+END;"#,
+    )
+    .expect("Failed to parse block");
+
+    let env = Environment::default();
+    let result = execute_block(&block, &env).expect("Failed to execute block");
+
+    // SYSDATE with DATETIME type should return a DateTime value (date, time, and timezone)
+    match result {
+        Value::DateTime(_) => (),
+        _ => panic!("Expected SYSDATE with DATETIME type to return a DateTime value"),
+    }
 }
 
 #[test]

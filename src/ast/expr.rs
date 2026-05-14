@@ -15,4 +15,5 @@ pub enum Expr {
         op: BinaryOp,
         right: Box<Expr>,
     },
+    Sysdate,
 }
