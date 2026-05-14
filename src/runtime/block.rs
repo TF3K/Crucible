@@ -109,7 +109,7 @@ fn execute_statement(statement: &Statement, env: &Environment) -> Result<ExecFlo
         Statement::Expression(expr) => Ok(ExecFlow::Value(eval(expr, env)?)),
         Statement::Assignment { name, value } => {
             let result = eval(value, env)?;
-            env.assign(name, result.clone());
+            env.assign(name, result.clone())?;
             Ok(ExecFlow::Value(result))
         }
         Statement::Raise { name } => Ok(ExecFlow::Raise(name.clone())),
@@ -303,7 +303,7 @@ fn execute_declarations(block: &Block, env: &Environment) -> Result<(), EvalErro
             continue;
         }
 
-        if declaration.type_name == "EXCEPTION" {
+        if declaration.type_name.eq_ignore_ascii_case("EXCEPTION") {
             continue;
         }
 
@@ -311,7 +311,11 @@ fn execute_declarations(block: &Block, env: &Environment) -> Result<(), EvalErro
             Some(expr) => eval(expr, env)?,
             None => Value::Null,
         };
-        env.set(declaration.name.clone(), value);
+        env.declare(
+            declaration.name.clone(),
+            value,
+            declaration.type_name.clone(),
+        )?;
     }
 
     Ok(())

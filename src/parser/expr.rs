@@ -37,11 +37,9 @@ pub(super) fn build_expr(pair: pest::iterators::Pair<Rule>) -> Result<Expr, Pars
             Ok(Expr::Literal(Value::Number(n)))
         }
 
-        Rule::string => {
-            let s = pair.as_str();
-            let inner = s[1..s.len() - 1].replace("''", "'");
-            Ok(Expr::Literal(Value::Text(inner)))
-        }
+        Rule::string => Ok(Expr::Literal(Value::Text(parse_string_literal(
+            pair.as_str(),
+        )))),
 
         Rule::boolean => {
             let b = match pair.as_str().to_uppercase().as_str() {
@@ -115,4 +113,15 @@ fn build_left_associative(pair: pest::iterators::Pair<Rule>) -> Result<Expr, Par
     }
 
     Ok(expr)
+}
+
+fn parse_string_literal(literal: &str) -> String {
+    let quote = literal.chars().next().unwrap_or('\0');
+    let inner = &literal[1..literal.len() - 1];
+
+    match quote {
+        '\'' => inner.replace("''", "'"),
+        '"' => inner.replace("\"\"", "\""),
+        _ => inner.to_string(),
+    }
 }

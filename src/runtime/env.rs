@@ -2,7 +2,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::cursors::Cursors;
 use crate::db::Database;
-use crate::expr::Value;
+use crate::expr::{EvalError, Value};
 use crate::triggers::Triggers;
 
 #[derive(Debug, Clone)]
@@ -16,6 +16,7 @@ pub struct Environment {
 #[derive(Debug)]
 struct Scope {
     vars: RefCell<HashMap<String, Value>>,
+    types: RefCell<HashMap<String, String>>,
     parent: Option<Environment>,
 }
 
@@ -24,6 +25,7 @@ impl Environment {
         Environment {
             scope: Rc::new(Scope {
                 vars: RefCell::new(HashMap::new()),
+                types: RefCell::new(HashMap::new()),
                 parent: Some(self.clone()),
             }),
             database: self.database.clone(),
@@ -44,6 +46,38 @@ impl Environment {
         self.triggers.as_ref()
     }
 
+    pub fn declare(
+        &self,
+        name: impl Into<String>,
+        value: Value,
+        type_name: impl Into<String>,
+    ) -> Result<(), EvalError> {
+        let name = name.into();
+        let type_name = type_name.into();
+        let canonical_type_name = canonical_type_name(&type_name).ok_or_else(|| {
+            EvalError::TypeError(format!(
+                "unknown type `{}` for variable `{}`",
+                type_name, name
+            ))
+        })?;
+
+        if !value.is_null() && !value.type_name().eq_ignore_ascii_case(canonical_type_name) {
+            return Err(EvalError::TypeError(format!(
+                "variable `{}` expects {}, got {}",
+                name,
+                canonical_type_name,
+                value.type_name()
+            )));
+        }
+
+        self.scope.vars.borrow_mut().insert(name.clone(), value);
+        self.scope
+            .types
+            .borrow_mut()
+            .insert(name, canonical_type_name.to_string());
+        Ok(())
+    }
+
     pub fn get(&self, name: &str) -> Option<Value> {
         if let Some((head, tail)) = name.split_once('.') {
             let value = self.get(head)?;
@@ -61,35 +95,41 @@ impl Environment {
         self.scope.vars.borrow_mut().insert(name.into(), value);
     }
 
-    pub fn assign(&self, name: &str, value: Value) {
+    pub fn assign(&self, name: &str, value: Value) -> Result<(), EvalError> {
         if let Some((head, tail)) = name.split_once('.') {
-            self.assign_path(head, tail, value);
-            return;
+            return self.assign_path(head, tail, value);
         }
 
         if self.scope.vars.borrow().contains_key(name) {
+            self.validate_assignment(name, &value)?;
             self.scope.vars.borrow_mut().insert(name.to_string(), value);
-        } else if let Some(parent) = &self.scope.parent {
-            parent.assign(name, value);
-        } else {
-            self.scope.vars.borrow_mut().insert(name.to_string(), value);
+            return Ok(());
         }
+
+        if let Some(parent) = &self.scope.parent {
+            if parent.has_name(name) {
+                return parent.assign(name, value);
+            }
+        }
+
+        self.scope.vars.borrow_mut().insert(name.to_string(), value);
+        Ok(())
     }
 
-    fn assign_path(&self, head: &str, tail: &str, value: Value) {
+    fn assign_path(&self, head: &str, tail: &str, value: Value) -> Result<(), EvalError> {
         if self.scope.vars.borrow().contains_key(head) {
+            self.validate_path_assignment(head)?;
             let mut vars = self.scope.vars.borrow_mut();
             let target = vars
                 .get_mut(head)
                 .expect("key should exist after contains_key check");
             assign_path_value(target, tail, value);
-            return;
+            return Ok(());
         }
 
         if let Some(parent) = &self.scope.parent {
             if parent.has_name(head) {
-                parent.assign_path(head, tail, value);
-                return;
+                return parent.assign_path(head, tail, value);
             }
         }
 
@@ -99,6 +139,28 @@ impl Environment {
             .vars
             .borrow_mut()
             .insert(head.to_string(), record);
+        Ok(())
+    }
+
+    fn validate_assignment(&self, name: &str, value: &Value) -> Result<(), EvalError> {
+        if let Some(expected_type) = self.scope.types.borrow().get(name) {
+            validate_value_type(name, expected_type, value)?;
+        }
+
+        Ok(())
+    }
+
+    fn validate_path_assignment(&self, name: &str) -> Result<(), EvalError> {
+        if let Some(expected_type) = self.scope.types.borrow().get(name)
+            && !expected_type.eq_ignore_ascii_case("RECORD")
+        {
+            return Err(EvalError::TypeError(format!(
+                "variable `{}` expects RECORD, got {}",
+                name, expected_type
+            )));
+        }
+
+        Ok(())
     }
 
     fn has_name(&self, name: &str) -> bool {
@@ -117,6 +179,7 @@ impl Default for Environment {
     fn default() -> Self {
         Self {
             scope: Rc::new(Scope {
+                types: RefCell::new(HashMap::new()),
                 vars: RefCell::new(HashMap::new()),
                 parent: None,
             }),
@@ -125,6 +188,39 @@ impl Default for Environment {
             triggers: Rc::new(Triggers::default()),
         }
     }
+}
+
+fn canonical_type_name(type_name: &str) -> Option<&'static str> {
+    if type_name.eq_ignore_ascii_case("NUMBER") {
+        Some("NUMBER")
+    } else if type_name.eq_ignore_ascii_case("TEXT") {
+        Some("TEXT")
+    } else if type_name.eq_ignore_ascii_case("BOOLEAN") {
+        Some("BOOLEAN")
+    } else if type_name.eq_ignore_ascii_case("DATE") {
+        Some("DATE")
+    } else if type_name.eq_ignore_ascii_case("TIMESTAMP") {
+        Some("TIMESTAMP")
+    } else if type_name.eq_ignore_ascii_case("DATETIME") {
+        Some("DATETIME")
+    } else if type_name.eq_ignore_ascii_case("RECORD") {
+        Some("RECORD")
+    } else {
+        None
+    }
+}
+
+fn validate_value_type(name: &str, expected_type: &str, value: &Value) -> Result<(), EvalError> {
+    if value.is_null() || value.type_name().eq_ignore_ascii_case(expected_type) {
+        return Ok(());
+    }
+
+    Err(EvalError::TypeError(format!(
+        "variable `{}` expects {}, got {}",
+        name,
+        expected_type,
+        value.type_name()
+    )))
 }
 
 fn get_path_value(value: Value, path: &str) -> Option<Value> {

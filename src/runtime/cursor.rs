@@ -33,14 +33,14 @@ pub(super) fn execute_fetch_cursor(
             }
 
             for (target, value) in targets.iter().zip(values.into_iter()) {
-                env.assign(target, value);
+                env.assign(target, value)?;
             }
 
             Ok(super::block::ExecFlow::Value(Value::Number(1.0)))
         }
         None => {
             for target in targets {
-                env.assign(target, Value::Null);
+                env.assign(target, Value::Null)?;
             }
 
             Ok(super::block::ExecFlow::Value(Value::Number(0.0)))

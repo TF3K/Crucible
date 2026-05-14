@@ -41,7 +41,7 @@ pub fn execute_select_into(stmt: &SelectIntoTarget, env: &Environment) -> Result
     let values = evaluate_expressions(&stmt.select_list, &row_env)?;
 
     for (target, value) in stmt.targets.iter().zip(values.into_iter()) {
-        env.assign(target, value);
+        env.assign(target, value)?;
     }
 
     Ok(Value::Number(1.0))

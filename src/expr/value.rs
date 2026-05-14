@@ -19,6 +19,19 @@ impl Value {
         matches!(self, Value::Null)
     }
 
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Value::Number(_) => "NUMBER",
+            Value::Text(_) => "TEXT",
+            Value::Bool(_) => "BOOLEAN",
+            Value::Date(_) => "DATE",
+            Value::Timestamp(_) => "TIMESTAMP",
+            Value::DateTime(_) => "DATETIME",
+            Value::Record(_) => "RECORD",
+            Value::Null => "NULL",
+        }
+    }
+
     pub fn as_number(&self) -> Option<f64> {
         match self {
             Value::Number(n) => Some(*n),

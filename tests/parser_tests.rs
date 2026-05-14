@@ -81,6 +81,16 @@ fn test_parse_variable_arithmetic() {
 }
 
 #[test]
+fn test_parse_double_quoted_string_literal() {
+    let expr = parse_expression("\"Hello, World!\"").expect("Failed to parse");
+
+    assert_eq!(
+        expr,
+        Expr::Literal(Value::Text("Hello, World!".to_string()))
+    );
+}
+
+#[test]
 fn test_parse_logical_not() {
     // NOT FALSE
     let expr = parse_expression("NOT FALSE").expect("Failed to parse");
@@ -189,6 +199,42 @@ fn test_parse_block_with_declare() {
                     left: Box::new(Expr::Var("x".to_string())),
                     op: BinaryOp::Add,
                     right: Box::new(Expr::Literal(Value::Number(5.0))),
+                }
+            );
+        }
+        _ => panic!("Expected assignment statement"),
+    }
+}
+
+#[test]
+fn test_parse_block_with_double_quoted_string_literal() {
+    let block = parse_block(
+        r#"DECLARE
+  x TEXT := "Hello, World!";
+BEGIN
+  x := x + " this is a test";
+END;"#,
+    )
+    .expect("Failed to parse block");
+
+    assert_eq!(block.declarations.len(), 1);
+    assert_eq!(block.declarations[0].name, "x");
+    assert_eq!(block.declarations[0].type_name, "TEXT");
+    assert_eq!(
+        block.declarations[0].init_value,
+        Some(Expr::Literal(Value::Text("Hello, World!".to_string())))
+    );
+
+    assert_eq!(block.statements.len(), 1);
+    match &block.statements[0] {
+        Statement::Assignment { name, value } => {
+            assert_eq!(name, "x");
+            assert_eq!(
+                *value,
+                Expr::Binary {
+                    left: Box::new(Expr::Var("x".to_string())),
+                    op: BinaryOp::Add,
+                    right: Box::new(Expr::Literal(Value::Text(" this is a test".to_string()))),
                 }
             );
         }

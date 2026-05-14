@@ -1,4 +1,4 @@
-use crucible::expr::Value;
+use crucible::expr::{EvalError, Value};
 use crucible::parser::parse_block;
 use crucible::runtime::{Environment, execute_block};
 
@@ -41,6 +41,42 @@ END;"#,
     let result = execute_block(&block, &env).expect("Failed to execute block");
 
     assert_eq!(result, Value::Number(15.0));
+    assert_eq!(env.get("x"), None);
+}
+
+#[test]
+fn test_execute_block_rejects_unknown_declaration_type() {
+    let block = parse_block(
+        r#"DECLARE
+  x GO := 10;
+BEGIN
+  x := x + 10;
+END;"#,
+    )
+    .expect("Failed to parse block");
+
+    let env = Environment::default();
+    let err = execute_block(&block, &env).expect_err("Expected a type error");
+
+    assert!(matches!(err, EvalError::TypeError(message) if message.contains("unknown type")));
+    assert_eq!(env.get("x"), None);
+}
+
+#[test]
+fn test_execute_block_rejects_assignment_type_mismatch() {
+    let block = parse_block(
+        r#"DECLARE
+  x NUMBER := 10;
+BEGIN
+  x := 'abc';
+END;"#,
+    )
+    .expect("Failed to parse block");
+
+    let env = Environment::default();
+    let err = execute_block(&block, &env).expect_err("Expected a type error");
+
+    assert!(matches!(err, EvalError::TypeError(message) if message.contains("expects NUMBER") && message.contains("TEXT")));
     assert_eq!(env.get("x"), None);
 }
 

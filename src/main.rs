@@ -1,10 +1,18 @@
 use cliclack::input;
 use crucible::parser::parse_block;
 use crucible::runtime::{Environment, execute_block};
+use std::io::{self, Write};
+
+fn clear_screen() {
+    print!("\x1B[2J\x1B[H");
+    io::stdout().flush().expect("Failed to clear screen");
+}
 
 fn main() {
     let env = Environment::default();
     let mut last_block = String::new();
+
+    clear_screen();
 
     loop {
         let default_input = if last_block.is_empty() {
