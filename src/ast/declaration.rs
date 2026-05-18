@@ -1,4 +1,4 @@
-use super::{CursorQuery, Expr, TriggerDeclaration};
+use super::{CursorQuery, Expr, RoutineDeclaration, TriggerDeclaration};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Declaration {
@@ -7,4 +7,5 @@ pub struct Declaration {
     pub init_value: Option<Expr>,
     pub cursor_query: Option<CursorQuery>,
     pub trigger: Option<TriggerDeclaration>,
+    pub routine: Option<RoutineDeclaration>,
 }

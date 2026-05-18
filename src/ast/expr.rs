@@ -6,6 +6,10 @@ use super::{BinaryOp, UnaryOp};
 pub enum Expr {
     Literal(Value),
     Var(String),
+    Call {
+        name: String,
+        args: Vec<Expr>,
+    },
     Unary {
         op: UnaryOp,
         expr: Box<Expr>,

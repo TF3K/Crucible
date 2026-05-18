@@ -2,7 +2,7 @@ use crate::ast::{TriggerDeclaration, TriggerEvent, TriggerTiming};
 use crate::db::Row;
 use crate::expr::{EvalError, Value};
 
-use super::{block, Environment};
+use super::{Environment, block};
 
 pub(super) fn fire_row_triggers(
     timing: TriggerTiming,
@@ -35,6 +35,7 @@ fn execute_trigger(
         block::ExecFlow::Value(_) | block::ExecFlow::NoValue => {}
         block::ExecFlow::ExitLoop(_) => return Err(EvalError::ExitOutsideLoop),
         block::ExecFlow::Raise(name) => return Err(EvalError::UnhandledException(name)),
+        block::ExecFlow::Return(_) => return Err(EvalError::ReturnOutsideRoutine),
     }
 
     match trigger_env.get("NEW") {
@@ -43,9 +44,7 @@ fn execute_trigger(
             "trigger `NEW` must be RECORD, got {}",
             value_type_name(&value)
         ))),
-        None => Err(EvalError::TypeError(
-            "trigger `NEW` is missing".to_string(),
-        )),
+        None => Err(EvalError::TypeError("trigger `NEW` is missing".to_string())),
     }
 }
 

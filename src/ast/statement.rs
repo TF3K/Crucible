@@ -55,6 +55,11 @@ pub enum Statement {
     CreateTable(CreateTableStatement),
     AlterTable(AlterTableStatement),
     DropTable(DropTableStatement),
+    Call {
+        name: String,
+        args: Vec<Expr>,
+    },
+    Return(Option<Expr>),
     Expression(Expr),
     Assignment {
         name: String,

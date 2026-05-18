@@ -1,4 +1,4 @@
-use super::{ParseError, Rule};
+use super::{ParseError, Rule, routine::build_call_expr};
 use crate::ast::{BinaryOp, Expr, UnaryOp};
 use crate::expr::Value;
 use chrono::NaiveDate;
@@ -54,6 +54,8 @@ pub(super) fn build_expr(pair: pest::iterators::Pair<Rule>) -> Result<Expr, Pars
         }
 
         Rule::sysdate => Ok(Expr::Sysdate),
+
+        Rule::call_expr => build_call_expr(pair),
 
         Rule::boolean => {
             let b = match pair.as_str().to_uppercase().as_str() {

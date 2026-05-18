@@ -49,5 +49,6 @@ pub(crate) fn build_trigger_declaration(
             table,
             body,
         }),
+        routine: None,
     })
 }

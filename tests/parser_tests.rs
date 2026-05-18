@@ -1,5 +1,5 @@
 use chrono::NaiveDate;
-use crucible::ast::{BinaryOp, Expr, Statement, UnaryOp};
+use crucible::ast::{BinaryOp, Expr, JoinKind, RoutineKind, RoutineParameter, Statement, UnaryOp};
 use crucible::expr::{Value, eval};
 use crucible::parser::{parse_block, parse_expression};
 use crucible::runtime::Environment;
@@ -305,6 +305,193 @@ END;"#,
         Some(Expr::Sysdate) => (),
         _ => panic!("Expected SYSDATE initializer to be Expr::Sysdate"),
     }
+}
+
+#[test]
+fn test_parse_function_declaration_and_return_statement() {
+    let block = parse_block(
+        r#"DECLARE
+  FUNCTION add(a NUMBER, b NUMBER) RETURN NUMBER IS
+  BEGIN
+    RETURN a + b;
+  END;
+BEGIN
+  add(1, 2);
+END;"#,
+    )
+    .expect("Failed to parse block");
+
+    assert_eq!(block.declarations.len(), 1);
+    assert_eq!(block.declarations[0].type_name, "FUNCTION");
+    let routine = block.declarations[0]
+        .routine
+        .as_ref()
+        .expect("Expected routine declaration");
+    assert_eq!(routine.kind, RoutineKind::Function);
+    assert_eq!(routine.name, "add");
+    assert_eq!(
+        routine.parameters,
+        vec![
+            RoutineParameter {
+                name: "a".to_string(),
+                type_name: "NUMBER".to_string(),
+            },
+            RoutineParameter {
+                name: "b".to_string(),
+                type_name: "NUMBER".to_string(),
+            },
+        ]
+    );
+    assert_eq!(routine.return_type.as_deref(), Some("NUMBER"));
+    assert_eq!(routine.body.statements.len(), 1);
+    assert_eq!(
+        routine.body.statements[0],
+        Statement::Return(Some(Expr::Binary {
+            left: Box::new(Expr::Var("a".to_string())),
+            op: BinaryOp::Add,
+            right: Box::new(Expr::Var("b".to_string())),
+        }))
+    );
+}
+
+#[test]
+fn test_parse_procedure_declaration_uses_procedure_type_name() {
+    let block = parse_block(
+        r#"DECLARE
+  PROCEDURE bump_total(value NUMBER) IS
+  BEGIN
+    total := value;
+  END;
+BEGIN
+END;"#,
+    )
+    .expect("Failed to parse block");
+
+    assert_eq!(block.declarations.len(), 1);
+    assert_eq!(block.declarations[0].type_name, "PROCEDURE");
+    let routine = block.declarations[0]
+        .routine
+        .as_ref()
+        .expect("Expected routine declaration");
+    assert_eq!(routine.kind, RoutineKind::Procedure);
+}
+
+#[test]
+fn test_parse_procedure_call_statement() {
+    let block = parse_block(
+        r#"BEGIN
+  bump_total(42);
+END;"#,
+    )
+    .expect("Failed to parse block");
+
+    assert_eq!(block.declarations.len(), 0);
+    assert_eq!(block.statements.len(), 1);
+    assert_eq!(
+        block.statements[0],
+        Statement::Call {
+            name: "bump_total".to_string(),
+            args: vec![Expr::Literal(Value::Number(42.0))],
+        }
+    );
+}
+
+#[test]
+fn test_parse_select_into_with_join_and_aliases() {
+    let block = parse_block(
+        r#"DECLARE
+  result TEXT;
+BEGIN
+  SELECT e.name INTO result
+  FROM employees e
+  JOIN departments d ON e.id = d.employee_id
+  WHERE d.department = "Sales";
+END;"#,
+    )
+    .expect("Failed to parse block");
+
+    assert_eq!(block.statements.len(), 1);
+
+    let Statement::SelectInto(stmt) = &block.statements[0] else {
+        panic!("Expected SELECT INTO statement");
+    };
+
+    assert_eq!(stmt.targets, vec!["result".to_string()]);
+    assert_eq!(stmt.query.select_list.len(), 1);
+    assert_eq!(stmt.query.from.table, "employees");
+    assert_eq!(stmt.query.from.alias.as_deref(), Some("e"));
+    assert_eq!(stmt.query.joins.len(), 1);
+    assert_eq!(stmt.query.joins[0].kind, JoinKind::Inner);
+    assert_eq!(stmt.query.joins[0].source.table, "departments");
+    assert_eq!(stmt.query.joins[0].source.alias.as_deref(), Some("d"));
+    assert!(stmt.query.where_clause.is_some());
+}
+
+#[test]
+fn test_parse_select_into_with_explicit_join_kinds() {
+    let block = parse_block(
+        r#"DECLARE
+  inner_name TEXT;
+  left_name TEXT;
+  right_name TEXT;
+  outer_name TEXT;
+BEGIN
+  SELECT e.name INTO inner_name
+  FROM employees e
+  INNER JOIN departments d ON e.id = d.employee_id;
+
+  SELECT e.name INTO left_name
+  FROM employees e
+  LEFT OUTER JOIN departments d ON e.id = d.employee_id;
+
+  SELECT e.name INTO right_name
+  FROM employees e
+  RIGHT JOIN departments d ON e.id = d.employee_id;
+
+  SELECT e.name INTO outer_name
+  FROM employees e
+  OUTER JOIN departments d ON e.id = d.employee_id;
+END;"#,
+    )
+    .expect("Failed to parse block");
+
+    assert_eq!(block.statements.len(), 4);
+
+    let Statement::SelectInto(inner_stmt) = &block.statements[0] else {
+        panic!("Expected first statement to be SELECT INTO");
+    };
+    assert_eq!(inner_stmt.query.joins[0].kind, JoinKind::Inner);
+
+    let Statement::SelectInto(left_stmt) = &block.statements[1] else {
+        panic!("Expected second statement to be SELECT INTO");
+    };
+    assert_eq!(left_stmt.query.joins[0].kind, JoinKind::Left);
+
+    let Statement::SelectInto(right_stmt) = &block.statements[2] else {
+        panic!("Expected third statement to be SELECT INTO");
+    };
+    assert_eq!(right_stmt.query.joins[0].kind, JoinKind::Right);
+
+    let Statement::SelectInto(outer_stmt) = &block.statements[3] else {
+        panic!("Expected fourth statement to be SELECT INTO");
+    };
+    assert_eq!(outer_stmt.query.joins[0].kind, JoinKind::Outer);
+}
+
+#[test]
+fn test_parse_function_call_expression() {
+    let expr = parse_expression("add(1, 2)").expect("Failed to parse");
+
+    assert_eq!(
+        expr,
+        Expr::Call {
+            name: "add".to_string(),
+            args: vec![
+                Expr::Literal(Value::Number(1.0)),
+                Expr::Literal(Value::Number(2.0))
+            ],
+        }
+    );
 }
 
 #[test]

@@ -7,20 +7,10 @@ use crate::ast::{
 use crate::db::{DbError, Row, Table};
 use crate::expr::{EvalError, Value, eval};
 
-use super::{Environment, trigger};
+use super::{Environment, cursor::materialize_query, trigger};
 
 pub fn execute_select_into(stmt: &SelectIntoTarget, env: &Environment) -> Result<Value, EvalError> {
-    let table = env
-        .database()
-        .table(&stmt.source)
-        .ok_or_else(|| EvalError::TableNotFound(stmt.source.clone()))?;
-
-    let mut matching_rows = Vec::new();
-    for row in table.rows() {
-        if row_matches_where(stmt.where_clause.as_ref(), env, row)? {
-            matching_rows.push(row);
-        }
-    }
+    let matching_rows = materialize_query(&stmt.query, env)?;
 
     if matching_rows.is_empty() {
         return Err(EvalError::NoDataFound);
@@ -30,15 +20,17 @@ pub fn execute_select_into(stmt: &SelectIntoTarget, env: &Environment) -> Result
         return Err(EvalError::TooManyRows);
     }
 
-    if stmt.targets.len() != stmt.select_list.len() {
+    let values = matching_rows
+        .into_iter()
+        .next()
+        .expect("one row is guaranteed");
+
+    if stmt.targets.len() != values.len() {
         return Err(EvalError::ColumnCountMismatch {
             expected: stmt.targets.len(),
-            found: stmt.select_list.len(),
+            found: values.len(),
         });
     }
-
-    let row_env = row_environment(env, matching_rows[0]);
-    let values = evaluate_expressions(&stmt.select_list, &row_env)?;
 
     for (target, value) in stmt.targets.iter().zip(values.into_iter()) {
         env.assign(target, value)?;

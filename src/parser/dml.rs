@@ -1,4 +1,8 @@
-use super::{ParseError, Rule, expr::build_expr};
+use super::{
+    ParseError, Rule,
+    expr::build_expr,
+    query::{build_from_clause, build_query_spec},
+};
 use crate::ast::{
     DeleteStatement, Expr, InsertStatement, SelectIntoTarget, Statement, UpdateAssignment,
     UpdateStatement,
@@ -11,11 +15,7 @@ pub(super) fn build_select_into_statement(
 
     let select_list = build_expression_list(inner.next().ok_or(ParseError::UnexpectedStructure)?)?;
     let targets = build_ident_list(inner.next().ok_or(ParseError::UnexpectedStructure)?)?;
-    let source = inner
-        .next()
-        .ok_or(ParseError::UnexpectedStructure)?
-        .as_str()
-        .to_string();
+    let (from, joins) = build_from_clause(inner.next().ok_or(ParseError::UnexpectedStructure)?)?;
 
     let where_clause = match inner.next() {
         Some(pair) if pair.as_rule() == Rule::where_clause => Some(build_where_clause(pair)?),
@@ -25,9 +25,7 @@ pub(super) fn build_select_into_statement(
 
     Ok(Statement::SelectInto(SelectIntoTarget {
         targets,
-        select_list,
-        source,
-        where_clause,
+        query: build_query_spec(select_list, from, joins, where_clause),
     }))
 }
 

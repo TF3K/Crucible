@@ -1,6 +1,7 @@
 use super::{
     ParseError, Rule, cursor::build_cursor_declaration, expr::build_expr,
-    statement::build_statement, trigger::build_trigger_declaration,
+    routine::build_routine_declaration, statement::build_statement,
+    trigger::build_trigger_declaration,
 };
 use crate::ast::{Block, Declaration};
 
@@ -70,6 +71,7 @@ fn build_declaration(pair: pest::iterators::Pair<Rule>) -> Result<Declaration, P
                 init_value,
                 cursor_query: None,
                 trigger: None,
+                routine: None,
             })
         }
         Rule::exception_declaration => {
@@ -86,10 +88,14 @@ fn build_declaration(pair: pest::iterators::Pair<Rule>) -> Result<Declaration, P
                 init_value: None,
                 cursor_query: None,
                 trigger: None,
+                routine: None,
             })
         }
         Rule::cursor_declaration => build_cursor_declaration(declaration),
         Rule::trigger_declaration => build_trigger_declaration(declaration),
+        Rule::procedure_declaration | Rule::function_declaration => {
+            build_routine_declaration(declaration)
+        }
         _ => Err(ParseError::UnexpectedStructure),
     }
 }

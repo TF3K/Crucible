@@ -1,8 +1,13 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    rc::Rc,
+};
 
 use crate::cursors::Cursors;
 use crate::db::Database;
 use crate::expr::{EvalError, Value};
+use crate::routines::Routines;
 use crate::triggers::Triggers;
 
 #[derive(Debug, Clone)]
@@ -11,12 +16,16 @@ pub struct Environment {
     database: Rc<Database>,
     cursors: Rc<Cursors>,
     triggers: Rc<Triggers>,
+    routines: Rc<Routines>,
 }
 
 #[derive(Debug)]
 struct Scope {
     vars: RefCell<HashMap<String, Value>>,
     types: RefCell<HashMap<String, String>>,
+    query_bindings: RefCell<HashMap<String, Value>>,
+    query_columns: RefCell<HashMap<String, Value>>,
+    query_ambiguous: RefCell<HashSet<String>>,
     parent: Option<Environment>,
 }
 
@@ -26,11 +35,15 @@ impl Environment {
             scope: Rc::new(Scope {
                 vars: RefCell::new(HashMap::new()),
                 types: RefCell::new(HashMap::new()),
+                query_bindings: RefCell::new(HashMap::new()),
+                query_columns: RefCell::new(HashMap::new()),
+                query_ambiguous: RefCell::new(HashSet::new()),
                 parent: Some(self.clone()),
             }),
             database: self.database.clone(),
             cursors: Rc::new(self.cursors.child()),
             triggers: Rc::new(self.triggers.child()),
+            routines: self.routines.clone(),
         }
     }
 
@@ -44,6 +57,10 @@ impl Environment {
 
     pub fn triggers(&self) -> &Triggers {
         self.triggers.as_ref()
+    }
+
+    pub fn routines(&self) -> &Routines {
+        self.routines.as_ref()
     }
 
     pub fn declare(
@@ -93,6 +110,52 @@ impl Environment {
 
     pub fn set(&self, name: impl Into<String>, value: Value) {
         self.scope.vars.borrow_mut().insert(name.into(), value);
+    }
+
+    pub fn bind_query_binding(&self, name: impl Into<String>, value: Value) {
+        self.scope
+            .query_bindings
+            .borrow_mut()
+            .insert(name.into(), value);
+    }
+
+    pub fn bind_query_column(&self, name: impl Into<String>, value: Value) {
+        self.scope
+            .query_columns
+            .borrow_mut()
+            .insert(name.into(), value);
+    }
+
+    pub fn mark_query_ambiguous(&self, name: impl Into<String>) {
+        self.scope.query_ambiguous.borrow_mut().insert(name.into());
+    }
+
+    pub fn resolve(&self, name: &str) -> Result<Option<Value>, EvalError> {
+        if let Some((head, tail)) = name.split_once('.') {
+            let value = self.resolve(head)?;
+            return Ok(value.and_then(|value| get_path_value(value, tail)));
+        }
+
+        if self.scope.query_ambiguous.borrow().contains(name) {
+            return Err(EvalError::AmbiguousColumn(name.to_string()));
+        }
+
+        if let Some(value) = self.scope.query_bindings.borrow().get(name) {
+            return Ok(Some(value.clone()));
+        }
+
+        if let Some(value) = self.scope.query_columns.borrow().get(name) {
+            return Ok(Some(value.clone()));
+        }
+
+        if let Some(value) = self.scope.vars.borrow().get(name) {
+            return Ok(Some(value.clone()));
+        }
+
+        self.scope
+            .parent
+            .as_ref()
+            .map_or(Ok(None), |parent| parent.resolve(name))
     }
 
     pub fn assign(&self, name: &str, value: Value) -> Result<(), EvalError> {
@@ -181,16 +244,20 @@ impl Default for Environment {
             scope: Rc::new(Scope {
                 types: RefCell::new(HashMap::new()),
                 vars: RefCell::new(HashMap::new()),
+                query_bindings: RefCell::new(HashMap::new()),
+                query_columns: RefCell::new(HashMap::new()),
+                query_ambiguous: RefCell::new(HashSet::new()),
                 parent: None,
             }),
             database: Rc::new(Database::default()),
             cursors: Rc::new(Cursors::default()),
             triggers: Rc::new(Triggers::default()),
+            routines: Rc::new(Routines::default()),
         }
     }
 }
 
-fn canonical_type_name(type_name: &str) -> Option<&'static str> {
+pub(crate) fn canonical_type_name(type_name: &str) -> Option<&'static str> {
     if type_name.eq_ignore_ascii_case("NUMBER") {
         Some("NUMBER")
     } else if type_name.eq_ignore_ascii_case("TEXT") {

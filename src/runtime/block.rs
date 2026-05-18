@@ -2,7 +2,7 @@ use crate::ast::{Block, ExceptionCondition, ExceptionHandler, Expr, IfBranch, St
 use crate::expr::{EvalError, Value, eval};
 use chrono::Local;
 
-use super::{Environment, cursor, ddl, dml};
+use super::{Environment, cursor, ddl, dml, routine};
 
 pub fn execute_block(block: &Block, env: &Environment) -> Result<Value, EvalError> {
     let local_env = env.child();
@@ -12,6 +12,7 @@ pub fn execute_block(block: &Block, env: &Environment) -> Result<Value, EvalErro
         ExecFlow::NoValue => Ok(Value::Null),
         ExecFlow::ExitLoop(_) => Err(EvalError::ExitOutsideLoop),
         ExecFlow::Raise(name) => Err(EvalError::UnhandledException(name)),
+        ExecFlow::Return(_) => Err(EvalError::ReturnOutsideRoutine),
     }
 }
 
@@ -31,7 +32,10 @@ pub fn execute_block_collect_values(
             find_exception_handler(&block.exception_handlers, &ExceptionSignal::Runtime)
         {
             // If a handler exists, execute its statements and continue
-            execute_statements(&handler.statements, &local_env)?;
+            match execute_statements(&handler.statements, &local_env)? {
+                ExecFlow::Return(_) => return Err(EvalError::ReturnOutsideRoutine),
+                _ => {}
+            }
         } else {
             return Err(err);
         }
@@ -44,6 +48,7 @@ pub fn execute_block_collect_values(
             ExecFlow::Value(value) => results.push(value),
             ExecFlow::NoValue => results.push(Value::Null),
             ExecFlow::Raise(name) => return Err(EvalError::UnhandledException(name)),
+            ExecFlow::Return(_) => return Err(EvalError::ReturnOutsideRoutine),
             ExecFlow::ExitLoop(opt) => {
                 results.push(opt.unwrap_or(Value::Null));
                 return Ok(results);
@@ -146,6 +151,25 @@ fn execute_statement(statement: &Statement, env: &Environment) -> Result<ExecFlo
 
         Statement::DropTable(stmt) => Ok(ExecFlow::Value(ddl::execute_drop_table(stmt, env)?)),
 
+        Statement::Call { name, args } => {
+            let value = routine::execute_routine_call(
+                name,
+                args,
+                env,
+                routine::RoutineCallContext::Statement,
+            )?;
+
+            Ok(match value {
+                Some(value) => ExecFlow::Value(value),
+                None => ExecFlow::NoValue,
+            })
+        }
+
+        Statement::Return(value) => Ok(ExecFlow::Return(match value {
+            Some(expr) => Some(eval(expr, env)?),
+            None => None,
+        })),
+
         Statement::Expression(expr) => Ok(ExecFlow::Value(eval(expr, env)?)),
         Statement::Assignment { name, value } => {
             let result = eval(value, env)?;
@@ -202,6 +226,7 @@ fn execute_while_statement(
             ExecFlow::Value(value) => last_value = Some(value),
             ExecFlow::NoValue => {}
             ExecFlow::Raise(name) => return Ok(ExecFlow::Raise(name)),
+            ExecFlow::Return(value) => return Ok(ExecFlow::Return(value)),
             ExecFlow::ExitLoop(value) => {
                 return Ok(ExecFlow::Value(value.or(last_value).unwrap_or(Value::Null)));
             }
@@ -219,6 +244,7 @@ fn execute_loop_statement(body: &[Statement], env: &Environment) -> Result<ExecF
             ExecFlow::Value(value) => last_value = Some(value),
             ExecFlow::NoValue => {}
             ExecFlow::Raise(name) => return Ok(ExecFlow::Raise(name)),
+            ExecFlow::Return(value) => return Ok(ExecFlow::Return(value)),
             ExecFlow::ExitLoop(value) => {
                 return Ok(ExecFlow::Value(value.or(last_value).unwrap_or(Value::Null)));
             }
@@ -247,6 +273,7 @@ fn execute_for_statement(
             ExecFlow::Value(value) => last_value = Some(value),
             ExecFlow::NoValue => {}
             ExecFlow::Raise(name) => return Ok(ExecFlow::Raise(name)),
+            ExecFlow::Return(value) => return Ok(ExecFlow::Return(value)),
             ExecFlow::ExitLoop(value) => {
                 return Ok(ExecFlow::Value(value.or(last_value).unwrap_or(Value::Null)));
             }
@@ -286,6 +313,9 @@ pub(super) fn execute_statements(
             ExecFlow::NoValue => {}
             ExecFlow::Raise(name) => {
                 return Ok(ExecFlow::Raise(name));
+            }
+            ExecFlow::Return(value) => {
+                return Ok(ExecFlow::Return(value));
             }
             ExecFlow::ExitLoop(value) => {
                 return Ok(ExecFlow::ExitLoop(value.or(last_value)));
@@ -334,6 +364,11 @@ fn execute_declarations(block: &Block, env: &Environment) -> Result<(), EvalErro
     for declaration in &block.declarations {
         if let Some(trigger) = &declaration.trigger {
             env.triggers().declare(trigger.clone())?;
+            continue;
+        }
+
+        if let Some(routine) = &declaration.routine {
+            env.routines().declare(routine.clone())?;
             continue;
         }
 
@@ -407,4 +442,5 @@ pub(super) enum ExecFlow {
     NoValue,
     ExitLoop(Option<Value>),
     Raise(String),
+    Return(Option<Value>),
 }

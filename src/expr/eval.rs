@@ -1,6 +1,7 @@
 use crate::ast::{BinaryOp, Expr, UnaryOp};
 use crate::expr::value::Value;
 use crate::runtime::env::Environment;
+use crate::runtime::routine::{self, RoutineCallContext};
 use chrono::Local;
 
 #[derive(Debug, thiserror::Error, PartialEq)]
@@ -38,6 +39,25 @@ pub enum EvalError {
     #[error("cursor `{0}` is not open")]
     CursorNotOpen(String),
 
+    #[error("routine `{0}` is already declared")]
+    RoutineAlreadyDeclared(String),
+
+    #[error("routine `{0}` is not declared")]
+    RoutineNotDeclared(String),
+
+    #[error("routine `{routine}` expects {expected} arguments, found {found}")]
+    RoutineArgumentCountMismatch {
+        routine: String,
+        expected: usize,
+        found: usize,
+    },
+
+    #[error("ambiguous column `{0}`")]
+    AmbiguousColumn(String),
+
+    #[error("table qualifier `{0}` is already declared in this query")]
+    QueryQualifierAlreadyDeclared(String),
+
     #[error("trigger `{0}` is already declared")]
     TriggerAlreadyDeclared(String),
 
@@ -46,6 +66,9 @@ pub enum EvalError {
 
     #[error("exit used outside of a loop")]
     ExitOutsideLoop,
+
+    #[error("return used outside of a routine")]
+    ReturnOutsideRoutine,
 
     #[error("type error: {0}")]
     TypeError(String),
@@ -59,7 +82,7 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
         Expr::Literal(v) => Ok(v.clone()),
 
         Expr::Var(name) => env
-            .get(name)
+            .resolve(name)?
             .ok_or_else(|| EvalError::UndefinedVariable(name.clone())),
 
         Expr::Unary { op, expr } => {
@@ -71,6 +94,16 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             let lhs = eval(left, env)?;
             let rhs = eval(right, env)?;
             eval_binary(op, lhs, rhs)
+        }
+
+        Expr::Call { name, args } => {
+            routine::execute_routine_call(name, args, env, RoutineCallContext::Expression)?
+                .ok_or_else(|| {
+                    EvalError::TypeError(format!(
+                        "routine `{}` cannot be used in an expression",
+                        name
+                    ))
+                })
         }
 
         Expr::Sysdate => {

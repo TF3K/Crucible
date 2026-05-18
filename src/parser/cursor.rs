@@ -1,4 +1,8 @@
-use super::{ParseError, Rule, expr::build_expr};
+use super::{
+    ParseError, Rule,
+    expr::build_expr,
+    query::{build_from_clause, build_query_spec},
+};
 use crate::ast::{CursorQuery, Declaration, Statement};
 
 pub(super) fn build_cursor_declaration(
@@ -19,6 +23,7 @@ pub(super) fn build_cursor_declaration(
         init_value: None,
         cursor_query: Some(query),
         trigger: None,
+        routine: None,
     })
 }
 
@@ -108,11 +113,7 @@ fn build_cursor_query(pair: pest::iterators::Pair<Rule>) -> Result<CursorQuery, 
         .ok_or(ParseError::UnexpectedStructure)?
         .as_str()
         .to_string();
-    let source = inner
-        .next()
-        .ok_or(ParseError::UnexpectedStructure)?
-        .as_str()
-        .to_string();
+    let (from, joins) = build_from_clause(inner.next().ok_or(ParseError::UnexpectedStructure)?)?;
 
     let where_clause = match inner.next() {
         Some(pair) if pair.as_rule() == Rule::where_clause => Some(build_where_clause(pair)?),
@@ -120,11 +121,7 @@ fn build_cursor_query(pair: pest::iterators::Pair<Rule>) -> Result<CursorQuery, 
         _ => return Err(ParseError::UnexpectedStructure),
     };
 
-    Ok(CursorQuery {
-        select_list,
-        source,
-        where_clause,
-    })
+    Ok(build_query_spec(select_list, from, joins, where_clause))
 }
 
 fn build_expression_list(

@@ -27,6 +27,37 @@ fn seed_employees_table(env: &Environment) {
         .expect("failed to seed employees table");
 }
 
+fn seed_departments_table(env: &Environment) {
+    env.database()
+        .create_table("departments", ["id", "employee_id", "department"]);
+
+    env.database()
+        .with_table_mut("departments", |table| {
+            table
+                .insert_row(vec![
+                    Value::Number(1.0),
+                    Value::Number(1.0),
+                    Value::Text("Sales".to_string()),
+                ])
+                .expect("failed to insert first department");
+            table
+                .insert_row(vec![
+                    Value::Number(2.0),
+                    Value::Number(2.0),
+                    Value::Text("Engineering".to_string()),
+                ])
+                .expect("failed to insert second department");
+            table
+                .insert_row(vec![
+                    Value::Number(3.0),
+                    Value::Number(99.0),
+                    Value::Text("Support".to_string()),
+                ])
+                .expect("failed to insert third department");
+        })
+        .expect("failed to seed departments table");
+}
+
 #[test]
 fn test_execute_block_returns_15_for_basic_plsql_block() {
     let block = parse_block(
@@ -122,6 +153,202 @@ END;"#,
         Value::Date(_) => (),
         _ => panic!("Expected SYSDATE to return a Date value"),
     }
+}
+
+#[test]
+fn test_execute_block_calls_function_declared_in_previous_block() {
+    let declaration_block = parse_block(
+        r#"DECLARE
+  FUNCTION add(a NUMBER, b NUMBER) RETURN NUMBER IS
+  BEGIN
+    RETURN a + b;
+  END;
+BEGIN
+END;"#,
+    )
+    .expect("Failed to parse declaration block");
+
+    let call_block = parse_block(
+        r#"DECLARE
+  result NUMBER := add(2, 3);
+BEGIN
+  result;
+END;"#,
+    )
+    .expect("Failed to parse call block");
+
+    let env = Environment::default();
+    execute_block(&declaration_block, &env).expect("Failed to register function");
+
+    let result = execute_block(&call_block, &env).expect("Failed to execute function call");
+
+    assert_eq!(result, Value::Number(5.0));
+}
+
+#[test]
+fn test_execute_block_calls_procedure_declared_in_previous_block() {
+    let declaration_block = parse_block(
+        r#"DECLARE
+  PROCEDURE set_total(value NUMBER) IS
+  BEGIN
+    total := value;
+  END;
+BEGIN
+END;"#,
+    )
+    .expect("Failed to parse declaration block");
+
+    let call_block = parse_block(
+        r#"DECLARE
+  total NUMBER := 1;
+BEGIN
+  set_total(42);
+  total;
+END;"#,
+    )
+    .expect("Failed to parse call block");
+
+    let env = Environment::default();
+    execute_block(&declaration_block, &env).expect("Failed to register procedure");
+
+    let result = execute_block(&call_block, &env).expect("Failed to execute procedure call");
+
+    assert_eq!(result, Value::Number(42.0));
+}
+
+#[test]
+fn test_execute_block_supports_inner_join_queries() {
+    let env = Environment::default();
+    seed_employees_table(&env);
+    seed_departments_table(&env);
+
+    let block = parse_block(
+        r#"DECLARE
+  result TEXT;
+BEGIN
+  SELECT e.name INTO result
+  FROM employees e
+  JOIN departments d ON e.id = d.employee_id
+  WHERE d.department = "Sales";
+  result;
+END;"#,
+    )
+    .expect("Failed to parse join block");
+
+    let result = execute_block(&block, &env).expect("Failed to execute join block");
+
+    assert_eq!(result, Value::Text("Alice".to_string()));
+}
+
+#[test]
+fn test_execute_block_supports_left_join_queries() {
+    let env = Environment::default();
+    seed_employees_table(&env);
+    seed_departments_table(&env);
+
+    let block = parse_block(
+        r#"DECLARE
+  result TEXT;
+BEGIN
+  SELECT d.department INTO result
+  FROM employees e
+  LEFT OUTER JOIN departments d ON e.id = d.employee_id AND d.department = "Support"
+  WHERE e.name = "Bob";
+  result;
+END;"#,
+    )
+    .expect("Failed to parse left join block");
+
+    let result = execute_block(&block, &env).expect("Failed to execute left join block");
+
+    assert_eq!(result, Value::Null);
+}
+
+#[test]
+fn test_execute_block_supports_right_join_queries() {
+    let env = Environment::default();
+    seed_employees_table(&env);
+    seed_departments_table(&env);
+
+    let block = parse_block(
+        r#"DECLARE
+  result TEXT;
+BEGIN
+  SELECT e.name INTO result
+  FROM employees e
+  RIGHT JOIN departments d ON e.id = d.employee_id
+  WHERE d.department = "Support";
+  result;
+END;"#,
+    )
+    .expect("Failed to parse right join block");
+
+    let result = execute_block(&block, &env).expect("Failed to execute right join block");
+
+    assert_eq!(result, Value::Null);
+}
+
+#[test]
+fn test_execute_block_supports_outer_join_queries() {
+    let env = Environment::default();
+    seed_employees_table(&env);
+    seed_departments_table(&env);
+
+    let left_unmatched_block = parse_block(
+        r#"DECLARE
+  result TEXT;
+BEGIN
+  SELECT d.department INTO result
+  FROM employees e
+  OUTER JOIN departments d ON e.id = d.employee_id AND d.department = "Support"
+  WHERE e.name = "Bob";
+  result;
+END;"#,
+    )
+    .expect("Failed to parse outer join block");
+
+    let right_unmatched_block = parse_block(
+        r#"DECLARE
+  result TEXT;
+BEGIN
+  SELECT e.name INTO result
+  FROM employees e
+  OUTER JOIN departments d ON e.id = d.employee_id
+  WHERE d.department = "Support";
+  result;
+END;"#,
+    )
+    .expect("Failed to parse outer join block");
+
+    let left_result = execute_block(&left_unmatched_block, &env)
+        .expect("Failed to execute left-side outer join block");
+    let right_result = execute_block(&right_unmatched_block, &env)
+        .expect("Failed to execute right-side outer join block");
+
+    assert_eq!(left_result, Value::Null);
+    assert_eq!(right_result, Value::Null);
+}
+
+#[test]
+fn test_execute_block_rejects_ambiguous_join_column() {
+    let env = Environment::default();
+    seed_employees_table(&env);
+    seed_departments_table(&env);
+
+    let block = parse_block(
+        r#"DECLARE
+  result NUMBER;
+BEGIN
+  SELECT id INTO result
+  FROM employees e
+  JOIN departments d ON e.id = d.employee_id;
+END;"#,
+    )
+    .expect("Failed to parse ambiguous join block");
+
+    let err = execute_block(&block, &env).expect_err("Expected ambiguous column error");
+
+    assert!(matches!(err, EvalError::AmbiguousColumn(message) if message == "id"));
 }
 
 #[test]

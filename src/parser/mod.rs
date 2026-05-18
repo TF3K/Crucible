@@ -6,6 +6,8 @@ mod cursor;
 mod ddl;
 mod dml;
 mod expr;
+mod query;
+mod routine;
 mod statement;
 pub mod trigger;
 mod tx;

@@ -1,11 +1,9 @@
-use super::Expr;
+use super::{CursorQuery, Expr};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SelectIntoTarget {
     pub targets: Vec<String>,
-    pub select_list: Vec<Expr>,
-    pub source: String,
-    pub where_clause: Option<Expr>,
+    pub query: CursorQuery,
 }
 
 #[derive(Clone, Debug, PartialEq)]

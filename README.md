@@ -2,13 +2,24 @@
 
 Crucible is a Rust interpreter for a PL/SQL-like block language. The goal is to stay close to the original PL/SQL model where practical while keeping the implementation small, testable, and easy to extend. It parses anonymous blocks, executes them against an in-memory database, and supports a growing subset of procedural SQL features including DML, transactions, cursors, and row-level triggers.
 
+Recent changes are tracked in [CHANGELOG.md](CHANGELOG.md).
+
 ## Current Status
+
+### Recent Changes
+
+- Added `BOOL` as a type keyword and boolean runtime support.
+- Added double-quoted string literals.
+- Added `DATE` literal syntax and `SYSDATE` initialization that respects the declared target type.
+- Updated the REPL to print each evaluated statement inside a `BEGIN` block.
+- Added procedures and functions with parameters, return types, and cross-block calls.
+- Expanded query support to include `INNER`, `LEFT`, `RIGHT`, and `OUTER` joins with alias-aware name resolution.
 
 ### Working Now
 
 - [x] Anonymous PL/SQL-style blocks with optional `DECLARE`, required `BEGIN` & `END`, and optional `EXCEPTION` sections.
 - [x] Variable declarations, exception declarations, cursor declarations, and trigger declarations.
-- [x] Expressions with arithmetic, comparison, logical operators, boolean literals, strings, numbers, and dotted field access.
+- [x] Expressions with arithmetic, comparison, logical operators, numbers, and dotted field access.
 - [x] Control flow with `IF` / `ELSIF` / `ELSE`, `WHILE`, `LOOP`, numeric `FOR`, cursor `FOR`, and `EXIT WHEN`.
 - [x] Exception handling with named handlers and `RAISE`.
 - [x] In-memory DML simulation for `SELECT INTO`, `INSERT`, `UPDATE`, and `DELETE`.
@@ -22,14 +33,16 @@ Crucible is a Rust interpreter for a PL/SQL-like block language. The goal is to 
 
 ### Roadmap
 
-- [ ] Procedures and functions with parameters and return values.
 - [ ] Package-level state and package bodies.
 - [ ] Savepoints and more complete transactional control.
 - [ ] Statement-level triggers and richer trigger conditions.
-- [ ] Broader SQL support, including more query forms and joins.
+- [ ] Broader SQL support, including subqueries, aggregation, and set operations.
 - [ ] Reading, parsing, and validating SQL files in later versions.
 - [ ] File-backed schema and table persistence.
 - [ ] Stronger type checking and explicit conversions closer to PL/SQL semantics.
+- [ ] Benchmarking heavy queries with `criterion`.
+- [ ] Multi-threading for parallel execution of queries with `rayon`.
+- [ ] Async execution for I/O with `tokio`.
 
 ## Example
 

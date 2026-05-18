@@ -3,6 +3,7 @@ pub mod cursor;
 pub mod ddl;
 pub mod dml;
 pub mod env;
+pub mod routine;
 pub mod trigger;
 
 pub use block::execute_block;
