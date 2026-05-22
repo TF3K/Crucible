@@ -1,5 +1,5 @@
 pub mod eval;
 pub mod value;
 
-pub use eval::{eval, EvalError};
-pub use value::Value;
+pub use eval::{EvalError, eval};
+pub use value::{DataType, Value};

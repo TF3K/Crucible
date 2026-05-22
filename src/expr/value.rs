@@ -1,6 +1,75 @@
-use std::{collections::HashMap, fmt};
+use indexmap::IndexMap;
+use std::fmt;
 
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum DataType {
+    Number,
+    Text,
+    Bool,
+    Date,
+    Timestamp,
+    DateTime,
+    Record,
+    Null,
+}
+
+impl DataType {
+    pub fn accept(&self, value: &Value) -> bool {
+        value.is_null() || Self::from_value(value) == *self
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            DataType::Number => "NUMBER",
+            DataType::Text => "TEXT",
+            DataType::Bool => "BOOLEAN",
+            DataType::Date => "DATE",
+            DataType::Timestamp => "TIMESTAMP",
+            DataType::DateTime => "DATETIME",
+            DataType::Record => "RECORD",
+            DataType::Null => "NULL",
+        }
+    }
+
+    pub fn from_name(type_name: &str) -> Option<Self> {
+        if type_name.eq_ignore_ascii_case("NUMBER") {
+            Some(Self::Number)
+        } else if type_name.eq_ignore_ascii_case("TEXT") {
+            Some(Self::Text)
+        } else if type_name.eq_ignore_ascii_case("BOOL")
+            || type_name.eq_ignore_ascii_case("BOOLEAN")
+        {
+            Some(Self::Bool)
+        } else if type_name.eq_ignore_ascii_case("DATE") {
+            Some(Self::Date)
+        } else if type_name.eq_ignore_ascii_case("TIMESTAMP") {
+            Some(Self::Timestamp)
+        } else if type_name.eq_ignore_ascii_case("DATETIME") {
+            Some(Self::DateTime)
+        } else if type_name.eq_ignore_ascii_case("RECORD") {
+            Some(Self::Record)
+        } else if type_name.eq_ignore_ascii_case("NULL") {
+            Some(Self::Null)
+        } else {
+            None
+        }
+    }
+
+    pub fn from_value(value: &Value) -> Self {
+        match value {
+            Value::Number(_) => DataType::Number,
+            Value::Text(_) => DataType::Text,
+            Value::Bool(_) => DataType::Bool,
+            Value::Date(_) => DataType::Date,
+            Value::Timestamp(_) => DataType::Timestamp,
+            Value::DateTime(_) => DataType::DateTime,
+            Value::Record(_) => DataType::Record,
+            Value::Null => DataType::Null,
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -10,7 +79,7 @@ pub enum Value {
     Date(NaiveDate),
     Timestamp(NaiveDateTime),
     DateTime(DateTime<FixedOffset>),
-    Record(HashMap<String, Value>),
+    Record(IndexMap<String, Value>),
     Null,
 }
 
@@ -20,16 +89,7 @@ impl Value {
     }
 
     pub fn type_name(&self) -> &'static str {
-        match self {
-            Value::Number(_) => "NUMBER",
-            Value::Text(_) => "TEXT",
-            Value::Bool(_) => "BOOLEAN",
-            Value::Date(_) => "DATE",
-            Value::Timestamp(_) => "TIMESTAMP",
-            Value::DateTime(_) => "DATETIME",
-            Value::Record(_) => "RECORD",
-            Value::Null => "NULL",
-        }
+        DataType::from_value(self).name()
     }
 
     pub fn as_number(&self) -> Option<f64> {

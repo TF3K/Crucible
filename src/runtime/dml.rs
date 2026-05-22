@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::ast::{
     DeleteStatement, Expr, InsertStatement, SelectIntoTarget, TriggerEvent, TriggerTiming,
     UpdateAssignment, UpdateStatement,
@@ -90,7 +88,7 @@ pub fn execute_update(stmt: &UpdateStatement, env: &Environment) -> Result<Value
         if !original_table
             .columns()
             .iter()
-            .any(|column| column == &assignment.column)
+            .any(|column| column.name == assignment.column)
         {
             return Err(EvalError::ColumnNotFound {
                 table: stmt.table.clone(),
@@ -234,12 +232,11 @@ fn build_insert_row(
                 });
             }
 
-            let mut row = blank_row(table);
+            let mut row = Row::from_schema_with_defaults(table.columns());
             for (column, value) in columns.iter().cloned().zip(values) {
                 if !table
-                    .columns()
-                    .iter()
-                    .any(|table_column| table_column == &column)
+                    .column_names()
+                    .any(|table_column| table_column == column)
                 {
                     return Err(EvalError::ColumnNotFound {
                         table: table_name.to_string(),
@@ -259,28 +256,19 @@ fn build_insert_row(
                 });
             }
 
-            let mut row = HashMap::new();
-            for (column, value) in table.columns().iter().cloned().zip(values) {
-                row.insert(column, value);
-            }
-            Ok(row)
+            Ok(Row::from_values(table.columns(), values))
         }
     }
 }
 
 fn blank_row(table: &Table) -> Row {
-    let mut row = HashMap::new();
-    for column in table.columns() {
-        row.insert(column.clone(), Value::Null);
-    }
-    row
+    Row::blank_from_schema(table.columns())
 }
 
 fn normalize_row(table_name: &str, table: &Table, row: &Row) -> Result<Row, EvalError> {
     for column in row.keys() {
         if !table
-            .columns()
-            .iter()
+            .column_names()
             .any(|table_column| table_column == column)
         {
             return Err(EvalError::ColumnNotFound {
@@ -290,12 +278,11 @@ fn normalize_row(table_name: &str, table: &Table, row: &Row) -> Result<Row, Eval
         }
     }
 
-    let mut normalized = HashMap::new();
+    let mut normalized = Row::from_schema_with_defaults(table.columns());
     for column in table.columns() {
-        normalized.insert(
-            column.clone(),
-            row.get(column).cloned().unwrap_or(Value::Null),
-        );
+        if let Some(value) = row.get(&column.name) {
+            normalized.insert(column.name.clone(), value.clone());
+        }
     }
 
     Ok(normalized)

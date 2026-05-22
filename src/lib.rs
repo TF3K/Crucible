@@ -3,6 +3,7 @@ pub mod cursors;
 pub mod db;
 pub mod expr;
 pub mod parser;
+pub mod repl;
 pub mod routines;
 pub mod runtime;
 pub mod triggers;

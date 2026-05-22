@@ -4,9 +4,11 @@ use std::{
     rc::Rc,
 };
 
+use indexmap::IndexMap;
+
 use crate::cursors::Cursors;
 use crate::db::Database;
-use crate::expr::{EvalError, Value};
+use crate::expr::{DataType, EvalError, Value};
 use crate::routines::Routines;
 use crate::triggers::Triggers;
 
@@ -22,7 +24,7 @@ pub struct Environment {
 #[derive(Debug)]
 struct Scope {
     vars: RefCell<HashMap<String, Value>>,
-    types: RefCell<HashMap<String, String>>,
+    types: RefCell<HashMap<String, DataType>>,
     query_bindings: RefCell<HashMap<String, Value>>,
     query_columns: RefCell<HashMap<String, Value>>,
     query_ambiguous: RefCell<HashSet<String>>,
@@ -71,27 +73,24 @@ impl Environment {
     ) -> Result<(), EvalError> {
         let name = name.into();
         let type_name = type_name.into();
-        let canonical_type_name = canonical_type_name(&type_name).ok_or_else(|| {
+        let declared_type = DataType::from_name(&type_name).ok_or_else(|| {
             EvalError::TypeError(format!(
                 "unknown type `{}` for variable `{}`",
                 type_name, name
             ))
         })?;
 
-        if !value.is_null() && !value.type_name().eq_ignore_ascii_case(canonical_type_name) {
+        if !declared_type.accept(&value) {
             return Err(EvalError::TypeError(format!(
                 "variable `{}` expects {}, got {}",
                 name,
-                canonical_type_name,
-                value.type_name()
+                declared_type.name(),
+                value.type_name(),
             )));
         }
 
         self.scope.vars.borrow_mut().insert(name.clone(), value);
-        self.scope
-            .types
-            .borrow_mut()
-            .insert(name, canonical_type_name.to_string());
+        self.scope.types.borrow_mut().insert(name, declared_type);
         Ok(())
     }
 
@@ -196,7 +195,7 @@ impl Environment {
             }
         }
 
-        let mut record = Value::Record(HashMap::new());
+        let mut record = Value::Record(IndexMap::new());
         assign_path_value(&mut record, tail, value);
         self.scope
             .vars
@@ -215,11 +214,12 @@ impl Environment {
 
     fn validate_path_assignment(&self, name: &str) -> Result<(), EvalError> {
         if let Some(expected_type) = self.scope.types.borrow().get(name)
-            && !expected_type.eq_ignore_ascii_case("RECORD")
+            && *expected_type != DataType::Record
         {
             return Err(EvalError::TypeError(format!(
                 "variable `{}` expects RECORD, got {}",
-                name, expected_type
+                name,
+                expected_type.name()
             )));
         }
 
@@ -257,35 +257,19 @@ impl Default for Environment {
     }
 }
 
-pub(crate) fn canonical_type_name(type_name: &str) -> Option<&'static str> {
-    if type_name.eq_ignore_ascii_case("NUMBER") {
-        Some("NUMBER")
-    } else if type_name.eq_ignore_ascii_case("TEXT") {
-        Some("TEXT")
-    } else if type_name.eq_ignore_ascii_case("BOOLEAN") {
-        Some("BOOLEAN")
-    } else if type_name.eq_ignore_ascii_case("DATE") {
-        Some("DATE")
-    } else if type_name.eq_ignore_ascii_case("TIMESTAMP") {
-        Some("TIMESTAMP")
-    } else if type_name.eq_ignore_ascii_case("DATETIME") {
-        Some("DATETIME")
-    } else if type_name.eq_ignore_ascii_case("RECORD") {
-        Some("RECORD")
-    } else {
-        None
-    }
-}
-
-fn validate_value_type(name: &str, expected_type: &str, value: &Value) -> Result<(), EvalError> {
-    if value.is_null() || value.type_name().eq_ignore_ascii_case(expected_type) {
+fn validate_value_type(
+    name: &str,
+    expected_type: &DataType,
+    value: &Value,
+) -> Result<(), EvalError> {
+    if expected_type.accept(value) {
         return Ok(());
     }
 
     Err(EvalError::TypeError(format!(
         "variable `{}` expects {}, got {}",
         name,
-        expected_type,
+        expected_type.name(),
         value.type_name()
     )))
 }
@@ -310,7 +294,7 @@ fn assign_path_value(target: &mut Value, path: &str, value: Value) {
         let fields = ensure_record(target);
         let entry = fields
             .entry(head.to_string())
-            .or_insert_with(|| Value::Record(HashMap::new()));
+            .or_insert_with(|| Value::Record(IndexMap::new()));
         assign_path_value(entry, tail, value);
     } else {
         let fields = ensure_record(target);
@@ -318,9 +302,9 @@ fn assign_path_value(target: &mut Value, path: &str, value: Value) {
     }
 }
 
-fn ensure_record(target: &mut Value) -> &mut HashMap<String, Value> {
+fn ensure_record(target: &mut Value) -> &mut IndexMap<String, Value> {
     if !matches!(target, Value::Record(_)) {
-        *target = Value::Record(HashMap::new());
+        *target = Value::Record(IndexMap::new());
     }
 
     match target {

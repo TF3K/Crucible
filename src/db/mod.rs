@@ -5,5 +5,5 @@ pub mod table;
 
 pub use database::Database;
 pub use error::DbError;
-pub use row::Row;
+pub use row::{Column, Row};
 pub use table::Table;

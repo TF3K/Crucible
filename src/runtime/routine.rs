@@ -1,7 +1,7 @@
 use crate::ast::{Expr, RoutineKind};
-use crate::expr::{eval, EvalError, Value};
+use crate::expr::{DataType, EvalError, Value, eval};
 
-use super::{block, env::canonical_type_name, Environment};
+use super::{Environment, block};
 
 pub(crate) enum RoutineCallContext {
     Expression,
@@ -72,21 +72,21 @@ fn validate_return_value(
         return Ok(());
     };
 
-    let canonical_type = canonical_type_name(return_type).ok_or_else(|| {
+    let expected_type = DataType::from_name(return_type).ok_or_else(|| {
         EvalError::TypeError(format!(
             "unknown return type `{}` for routine `{}`",
             return_type, routine_name
         ))
     })?;
 
-    if value.is_null() || value.type_name().eq_ignore_ascii_case(canonical_type) {
+    if expected_type.accept(value) {
         return Ok(());
     }
 
     Err(EvalError::TypeError(format!(
         "routine `{}` expects {}, got {}",
         routine_name,
-        canonical_type,
+        expected_type.name(),
         value.type_name()
     )))
 }

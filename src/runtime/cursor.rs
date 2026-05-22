@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::ast::{CursorQuery, Expr, JoinClause, JoinKind, Statement};
-use crate::db::Row;
+use crate::db::{Column, Row};
 use crate::expr::{EvalError, Value, eval};
 
 use super::{Environment, block::execute_statements};
@@ -271,7 +271,7 @@ fn build_column_counts(sources: &[SourceData]) -> HashMap<String, usize> {
 
     for source in sources {
         for column in &source.columns {
-            *counts.entry(column.clone()).or_insert(0) += 1;
+            *counts.entry(column.name.clone()).or_insert(0) += 1;
         }
     }
 
@@ -293,15 +293,15 @@ fn build_row_environment(
             .and_then(|row| row.clone())
             .unwrap_or_else(|| null_row(&source.columns));
 
-        row_env.bind_query_binding(source.qualifier.clone(), Value::Record(row.clone()));
+        row_env.bind_query_binding(source.qualifier.clone(), Value::Record(row.values.clone()));
 
         for column in &source.columns {
-            let value = row.get(column).cloned().unwrap_or(Value::Null);
+            let value = row.get(&column.name).cloned().unwrap_or(Value::Null);
 
-            if column_counts.get(column).copied().unwrap_or(0) == 1 {
-                row_env.bind_query_column(column.clone(), value);
+            if column_counts.get(&column.name).copied().unwrap_or(0) == 1 {
+                row_env.bind_query_column(column.name.clone(), value);
             } else {
-                row_env.mark_query_ambiguous(column.clone());
+                row_env.mark_query_ambiguous(column.name.clone());
             }
         }
     }
@@ -359,17 +359,13 @@ fn null_join_row(left_qualifiers: &[String]) -> JoinedRow {
     JoinedRow { sources }
 }
 
-fn null_row(columns: &[String]) -> Row {
-    columns
-        .iter()
-        .cloned()
-        .map(|column| (column, Value::Null))
-        .collect()
+fn null_row(columns: &[Column]) -> Row {
+    Row::blank_from_schema(columns)
 }
 
 #[derive(Clone)]
 struct SourceData {
     qualifier: String,
-    columns: Vec<String>,
+    columns: Vec<Column>,
     rows: Vec<Row>,
 }

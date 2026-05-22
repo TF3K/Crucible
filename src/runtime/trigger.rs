@@ -28,8 +28,8 @@ fn execute_trigger(
     env: &Environment,
 ) -> Result<Row, EvalError> {
     let trigger_env = env.child();
-    trigger_env.set("OLD", Value::Record(old_row.clone()));
-    trigger_env.set("NEW", Value::Record(new_row.clone()));
+    trigger_env.set("OLD", Value::Record(old_row.values.clone()));
+    trigger_env.set("NEW", Value::Record(new_row.values.clone()));
 
     match block::execute_block_in_scope(&trigger.body, &trigger_env)? {
         block::ExecFlow::Value(_) | block::ExecFlow::NoValue => {}
@@ -39,7 +39,7 @@ fn execute_trigger(
     }
 
     match trigger_env.get("NEW") {
-        Some(Value::Record(row)) => Ok(row),
+        Some(Value::Record(row)) => Ok(crate::db::Row::new(new_row.schema.clone(), row)),
         Some(value) => Err(EvalError::TypeError(format!(
             "trigger `NEW` must be RECORD, got {}",
             value_type_name(&value)

@@ -1,6 +1,7 @@
 use crate::expr::Value;
+use std::sync::Arc;
 
-use super::{DbError, Row};
+use super::{Column, DbError, Row};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TableConstraint {
@@ -10,7 +11,7 @@ pub struct TableConstraint {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Table {
-    columns: Vec<String>,
+    columns: Arc<Vec<Column>>,
     constraints: Vec<TableConstraint>,
     rows: Vec<Row>,
 }
@@ -18,14 +19,31 @@ pub struct Table {
 impl Table {
     pub fn new(columns: impl IntoIterator<Item = impl Into<String>>) -> Self {
         Self {
-            columns: columns.into_iter().map(Into::into).collect(),
+            columns: Arc::new(
+                columns
+                    .into_iter()
+                    .map(|name| Column::new(name.into()))
+                    .collect(),
+            ),
             constraints: Vec::new(),
             rows: Vec::new(),
         }
     }
 
-    pub fn columns(&self) -> &[String] {
+    pub fn from_columns(columns: impl IntoIterator<Item = Column>) -> Self {
+        Self {
+            columns: Arc::new(columns.into_iter().collect()),
+            constraints: Vec::new(),
+            rows: Vec::new(),
+        }
+    }
+
+    pub fn columns(&self) -> &[Column] {
         &self.columns
+    }
+
+    pub fn column_names(&self) -> impl Iterator<Item = &str> {
+        self.columns.iter().map(|column| column.name.as_str())
     }
 
     pub fn rows(&self) -> &[Row] {
@@ -58,7 +76,11 @@ impl Table {
         }
 
         for column in &columns {
-            if !self.columns.contains(column) {
+            if !self
+                .columns
+                .iter()
+                .any(|table_column| table_column.name == *column)
+            {
                 return Err(DbError::ColumnNotFound {
                     table: table_name.to_string(),
                     column: column.clone(),
@@ -78,7 +100,7 @@ impl Table {
             });
         }
 
-        let row = self.columns.iter().cloned().zip(values).collect::<Row>();
+        let row = Row::from_values(&self.columns, values);
         self.rows.push(row);
         Ok(())
     }
@@ -96,15 +118,14 @@ impl Table {
             });
         }
 
-        let mut row = self
-            .columns
-            .iter()
-            .cloned()
-            .map(|column| (column, Value::Null))
-            .collect::<Row>();
+        let mut row = Row::from_schema_with_defaults(&self.columns);
 
         for (column, value) in columns.iter().cloned().zip(values) {
-            if !self.columns.contains(&column) {
+            if !self
+                .columns
+                .iter()
+                .any(|table_column| table_column.name == column)
+            {
                 return Err(DbError::ColumnNotFound {
                     table: table_name.to_string(),
                     column,
